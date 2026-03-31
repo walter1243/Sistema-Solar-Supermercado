@@ -597,7 +597,7 @@ export default function AdminClient() {
           <div className="w-full max-w-sm rounded-3xl border border-white/20 bg-[#080808]/78 p-6 shadow-[0_25px_80px_rgba(0,0,0,0.55)] backdrop-blur-md">
             <div className="mb-5 text-center">
               <img
-                src="/logo-solar-wordmark.svg"
+                src="/image-removebg-preview.png"
                 alt="Solar Supermercado"
                 className="mx-auto h-20 w-auto max-w-[360px] object-contain sm:h-24 sm:max-w-[420px] md:h-28 md:max-w-[480px]"
               />
