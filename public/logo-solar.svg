@@ -1,0 +1,21 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="70" y1="60" x2="430" y2="460" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#001A66" />
+      <stop offset="1" stop-color="#0030A3" />
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="224" fill="url(#bgGrad)" stroke="#10204A" stroke-width="16" />
+  <path d="M114 160C160 90 282 74 356 114" stroke="#ED2D2E" stroke-width="22" stroke-linecap="round" />
+  <path d="M398 290C354 362 228 392 150 354" stroke="#ED2D2E" stroke-width="22" stroke-linecap="round" />
+  <path d="M128 256C128 211 170 176 224 176C253 176 280 186 298 202L273 234C262 224 245 217 227 217C198 217 177 232 177 255C177 278 198 293 230 293C259 293 280 312 280 338C280 372 247 398 203 398C166 398 133 385 112 362L138 330C154 347 179 358 204 358C223 358 238 349 238 336C238 323 224 315 201 311C156 303 128 284 128 256Z" fill="#F0F400" />
+  <text x="246" y="276" text-anchor="middle" fill="#F0F400" font-size="95" font-weight="900" font-family="Arial, sans-serif" letter-spacing="2">SOLAR</text>
+  <g transform="translate(300 286)">
+    <circle cx="0" cy="0" r="10" fill="#ED2D2E" />
+    <circle cx="35" cy="0" r="10" fill="#ED2D2E" />
+    <path d="M-8 -52H46L38 24H2L-8 -52Z" stroke="#ED2D2E" stroke-width="9" fill="none" />
+    <path d="M-14 -62H8" stroke="#ED2D2E" stroke-width="9" stroke-linecap="round" />
+    <path d="M6 -33H45M2 -13H42M0 7H39" stroke="#ED2D2E" stroke-width="6" />
+    <path d="M17 -52V24M31 -52V24" stroke="#ED2D2E" stroke-width="5" />
+  </g>
+</svg>
