@@ -52,6 +52,7 @@ type CategoryFilter = "todos" | "carnes" | "bebidas" | "hortfruit";
 
 type PaymentMethod = Order["paymentMethod"];
 type FulfillmentMethod = Order["fulfillmentMethod"];
+const DELIVERY_MINIMUM = 150;
 
 const displayCategories: Array<{ key: Exclude<CategoryFilter, "todos">; label: string }> = [
   { key: "carnes", label: "Carnes" },
@@ -200,6 +201,15 @@ export default function StorefrontClient() {
     }, 0);
   }, [cart, products]);
 
+  const isDeliveryUnlocked = total >= DELIVERY_MINIMUM;
+  const missingForDelivery = Math.max(0, DELIVERY_MINIMUM - total);
+
+  useEffect(() => {
+    if (!isDeliveryUnlocked && fulfillmentMethod === "entrega") {
+      setFulfillmentMethod("retirada");
+    }
+  }, [fulfillmentMethod, isDeliveryUnlocked]);
+
   function normalizeCategory(raw: string): Exclude<CategoryFilter, "todos"> | null {
     const normalized = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
     if (normalized.includes("carn")) return "carnes";
@@ -281,7 +291,7 @@ export default function StorefrontClient() {
 
   const canAdvanceToAddress = cart.length > 0;
   const canAdvanceToDelivery = Boolean(profile.fullName.trim() && profile.phone.trim());
-  const canAdvanceToReview = fulfillmentMethod === "retirada" ? true : Boolean(profile.street?.trim());
+  const canAdvanceToReview = fulfillmentMethod === "retirada" ? true : isDeliveryUnlocked && Boolean(profile.street?.trim());
 
   async function copyPixKey() {
     if (!settings.pixKey) return;
@@ -311,6 +321,11 @@ export default function StorefrontClient() {
 
     if (!profile.fullName.trim() || !profile.phone.trim()) {
       setCheckoutError("Preencha nome e telefone para finalizar.");
+      return;
+    }
+
+    if (fulfillmentMethod === "entrega" && !isDeliveryUnlocked) {
+      setCheckoutError(`Entrega disponivel somente para pedidos a partir de ${formatCurrency(DELIVERY_MINIMUM)}.`);
       return;
     }
 
@@ -623,6 +638,11 @@ export default function StorefrontClient() {
               {step === 1 && (
                 <motion.div key="step-1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="mt-3">
                   <p className="mb-2 text-sm font-semibold">Verifique os produtos</p>
+                  <div className={`mb-2 rounded-xl border px-3 py-2 text-xs ${isDeliveryUnlocked ? "border-[#123A24] bg-[#0B2418] text-[#9BFFD1]" : "border-[#3B2A00] bg-[#2A1E00] text-[#FFD98A]"}`}>
+                    {isDeliveryUnlocked
+                      ? `Entrega desbloqueada para este pedido.`
+                      : `Faltam ${formatCurrency(missingForDelivery)} para liberar entrega (minimo ${formatCurrency(DELIVERY_MINIMUM)}).`}
+                  </div>
                   <div className="max-h-48 overflow-auto">
                     {cart.length === 0 ? <p className="text-sm text-zinc-500">Nenhum item selecionado.</p> : cart.map((item) => {
                       const product = products.find((p) => p.id === item.productId);
@@ -676,8 +696,31 @@ export default function StorefrontClient() {
               {step === 3 && (
                 <motion.div key="step-3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="mt-3 rounded-xl border border-[#1A1A1A] bg-black p-3">
                   <p className="text-xs text-zinc-400">Entrega e pagamento</p>
+                  {!isDeliveryUnlocked ? (
+                    <div className="mt-2 rounded-xl border border-[#3B2A00] bg-[#2A1E00] px-3 py-2 text-xs text-[#FFD98A]">
+                      Entrega desbloqueia em {formatCurrency(DELIVERY_MINIMUM)}. Faltam {formatCurrency(missingForDelivery)} no carrinho.
+                    </div>
+                  ) : (
+                    <div className="mt-2 rounded-xl border border-[#123A24] bg-[#0B2418] px-3 py-2 text-xs text-[#9BFFD1]">
+                      Pedido elegivel para entrega.
+                    </div>
+                  )}
                   <div className="mt-2 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={() => setFulfillmentMethod("entrega")} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${fulfillmentMethod === "entrega" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A]"}`}>Entrega</button>
+                    <button
+                      type="button"
+                      disabled={!isDeliveryUnlocked}
+                      onClick={() => {
+                        if (!isDeliveryUnlocked) {
+                          setCheckoutError(`Entrega disponivel somente para pedidos a partir de ${formatCurrency(DELIVERY_MINIMUM)}.`);
+                          return;
+                        }
+                        setCheckoutError("");
+                        setFulfillmentMethod("entrega");
+                      }}
+                      className={`rounded-xl border px-3 py-2 text-sm font-semibold ${fulfillmentMethod === "entrega" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A]"} ${!isDeliveryUnlocked ? "cursor-not-allowed opacity-40" : ""}`}
+                    >
+                      Entrega (min {formatCurrency(DELIVERY_MINIMUM)})
+                    </button>
                     <button type="button" onClick={() => setFulfillmentMethod("retirada")} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${fulfillmentMethod === "retirada" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A]"}`}>Retirada</button>
                   </div>
                   {fulfillmentMethod === "entrega" ? (
@@ -697,7 +740,21 @@ export default function StorefrontClient() {
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button type="button" onClick={() => setStep(2)} className="rounded-xl border border-[#1A1A1A] py-2 text-sm">Voltar</button>
-                    <button type="button" onClick={() => { if (!canAdvanceToReview) { setCheckoutError("Preencha a rua para entrega."); return; } setCheckoutError(""); setStep(4); }} className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black">Proximo</button>
+                    <button
+                      type="button"
+                      disabled={!canAdvanceToReview}
+                      onClick={() => {
+                        if (!canAdvanceToReview) {
+                          setCheckoutError("Preencha a rua para entrega.");
+                          return;
+                        }
+                        setCheckoutError("");
+                        setStep(4);
+                      }}
+                      className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      Proximo
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -749,7 +806,7 @@ export default function StorefrontClient() {
         ) : null}
       </AnimatePresence>
 
-      {checkoutDone ? <div className="fixed bottom-4 left-1/2 z-40 w-[92%] max-w-md -translate-x-1/2 rounded-xl border border-[#1A1A1A] bg-[#080808] p-3 text-center text-sm">Pedido enviado com sucesso.</div> : null}
+      {checkoutDone ? <div className="fixed bottom-4 left-1/2 z-40 w-[92%] max-w-md -translate-x-1/2 rounded-xl border border-[#1A1A1A] bg-[#080808] p-3 text-center text-sm">Pedido enviado com sucesso. Em breve voce recebera atualizacoes do status.</div> : null}
 
       <button type="button" onClick={() => { setCartOpen(true); setStep(1); setCheckoutError(""); }} className="fixed bottom-5 left-1/2 z-30 w-[92%] max-w-md -translate-x-1/2 rounded-xl bg-[#00AAFF] py-3 text-sm font-black text-black shadow-[0_0_25px_rgba(0,170,255,0.35)]">
         Abrir checkout ({cartCount})
