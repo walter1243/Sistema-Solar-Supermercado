@@ -34,7 +34,7 @@ import {
   X,
   Bell,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomerAlert } from "@/types/domain";
 
 const profileDefault: CustomerProfile = {
@@ -133,6 +133,8 @@ export default function StorefrontClient() {
   const [customerSession, setCustomerSession] = useState<CustomerAccount | null>(null);
   const [customerAlerts, setCustomerAlerts] = useState<CustomerAlert[]>([]);
   const [whatsAppDraftMessage, setWhatsAppDraftMessage] = useState("");
+  const knownUnreadAlertIdsRef = useRef<Set<string>>(new Set());
+  const alertBootstrapDoneRef = useRef(false);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastPixOrder, setLastPixOrder] = useState<Order | null>(null);
   const [pixFlowOpen, setPixFlowOpen] = useState(false);
@@ -199,6 +201,8 @@ export default function StorefrontClient() {
   useEffect(() => {
     if (!customerSession?.id) {
       setCustomerAlerts([]);
+      knownUnreadAlertIdsRef.current = new Set();
+      alertBootstrapDoneRef.current = false;
       return;
     }
 
@@ -221,6 +225,57 @@ export default function StorefrontClient() {
       window.clearInterval(interval);
     };
   }, [customerSession?.id]);
+
+  function playAlertFeedback() {
+    if (typeof window === "undefined") return;
+
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate([120, 60, 120]);
+    }
+
+    const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = new AudioCtx();
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      gainNode.gain.setValueAtTime(0.001, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + 0.26);
+
+      window.setTimeout(() => {
+        void ctx.close();
+      }, 320);
+    } catch {
+      // Ignore audio feedback errors on unsupported devices.
+    }
+  }
+
+  useEffect(() => {
+    const unreadAlerts = customerAlerts.filter((alert) => !alert.readAt);
+    const unreadIds = new Set(unreadAlerts.map((alert) => alert.id));
+
+    if (alertBootstrapDoneRef.current) {
+      const hasNewUnread = unreadAlerts.some((alert) => !knownUnreadAlertIdsRef.current.has(alert.id));
+      if (hasNewUnread) {
+        playAlertFeedback();
+      }
+    } else {
+      alertBootstrapDoneRef.current = true;
+    }
+
+    knownUnreadAlertIdsRef.current = unreadIds;
+  }, [customerAlerts]);
 
   async function handleMarkAlertAsRead(alertId: string) {
     if (!customerSession?.id) return;
@@ -317,6 +372,8 @@ export default function StorefrontClient() {
 
     return null;
   }, [customerSession, lastOrderId, orders, profile.phone]);
+
+  const unreadAlerts = useMemo(() => customerAlerts.filter((alert) => !alert.readAt), [customerAlerts]);
 
   function addToCart(productId: string) {
     setCart((prev) => {
@@ -657,26 +714,22 @@ export default function StorefrontClient() {
           </div>
         )}
 
-        {customerSession && customerAlerts.length ? (
+        {customerSession && unreadAlerts.length ? (
           <div className="mb-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-3">
             <div className="mb-2 flex items-center gap-2">
               <Bell size={14} className="text-[#B2FF00]" />
               <p className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Alertas do painel</p>
             </div>
             <div className="space-y-2">
-              {customerAlerts.slice(0, 3).map((alert) => (
-                <div key={alert.id} className={`rounded-xl border p-2 ${alert.readAt ? "border-[#1A1A1A] bg-black/30" : "border-[#2A5C35] bg-[#0B2418]"}`}>
+              {unreadAlerts.slice(0, 3).map((alert) => (
+                <div key={alert.id} className="rounded-xl border border-[#2A5C35] bg-[#0B2418] p-2">
                   <p className="text-sm font-semibold">{alert.title}</p>
                   <p className="mt-1 text-xs text-zinc-300">{alert.message}</p>
                   <div className="mt-2 flex items-center justify-between">
                     <span className="text-[10px] text-zinc-500">{new Date(alert.createdAt).toLocaleString("pt-BR")}</span>
-                    {!alert.readAt ? (
-                      <button type="button" onClick={() => void handleMarkAlertAsRead(alert.id)} className="rounded-lg border border-[#B2FF00] px-2 py-1 text-[10px] font-semibold text-[#B2FF00]">
-                        Marcar como lido
-                      </button>
-                    ) : (
-                      <span className="text-[10px] text-zinc-500">Lido</span>
-                    )}
+                    <button type="button" onClick={() => void handleMarkAlertAsRead(alert.id)} className="rounded-lg border border-[#B2FF00] px-2 py-1 text-[10px] font-semibold text-[#B2FF00]">
+                      Marcar como lido
+                    </button>
                   </div>
                 </div>
               ))}
