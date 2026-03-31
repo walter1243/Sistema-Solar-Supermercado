@@ -439,8 +439,7 @@ export default function StorefrontClient() {
           <button type="button" onClick={() => setCategorySidebarOpen(true)} className="flex items-center gap-2" aria-label="Abrir categorias">
             <img src="/logo-solar.svg" alt="Solar Supermercado" className="h-10 w-10" />
             <div className="hidden sm:block">
-              <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Solar</p>
-              <p className="text-sm font-bold">Supermercado</p>
+              <img src="/logo-solar-wordmark.svg" alt="Solar Supermercado" className="h-8 w-auto" />
             </div>
           </button>
 

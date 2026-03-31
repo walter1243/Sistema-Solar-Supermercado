@@ -1,0 +1,36 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#89D9FF"/>
+      <stop offset="1" stop-color="#D7F2FF"/>
+    </linearGradient>
+    <linearGradient id="facade" x1="0" y1="0" x2="1600" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F3DA9"/>
+      <stop offset="1" stop-color="#092E87"/>
+    </linearGradient>
+    <linearGradient id="top" x1="0" y1="0" x2="1600" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ED5B60"/>
+      <stop offset="1" stop-color="#D44751"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <rect y="680" width="1600" height="220" fill="#1B2028"/>
+
+  <rect x="100" y="210" width="1400" height="180" rx="6" fill="url(#top)"/>
+  <rect x="80" y="360" width="1440" height="280" rx="8" fill="url(#facade)"/>
+  <rect x="180" y="420" width="430" height="180" fill="#EAF4FF" fill-opacity="0.26"/>
+  <rect x="650" y="420" width="760" height="180" fill="#0A276F"/>
+
+  <rect x="90" y="360" width="1420" height="22" fill="#F03A4A"/>
+  <rect x="90" y="382" width="1420" height="12" fill="#FFD24A"/>
+
+  <g opacity="0.18">
+    <circle cx="154" cy="688" r="88" fill="#0D1117"/>
+    <circle cx="364" cy="708" r="108" fill="#0D1117"/>
+    <circle cx="1300" cy="700" r="96" fill="#0D1117"/>
+  </g>
+
+  <text x="700" y="507" text-anchor="middle" fill="#FFD24A" font-size="88" font-weight="900" font-family="Arial Black, Impact, sans-serif">SOLAR</text>
+  <text x="910" y="508" text-anchor="start" fill="#FFD24A" font-size="48" font-weight="900" font-family="Arial Black, Impact, sans-serif">SUPERMERCADO</text>
+</svg>

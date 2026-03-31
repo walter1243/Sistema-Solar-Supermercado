@@ -271,29 +271,40 @@ export default function AdminClient() {
 
   if (!adminUser) {
     return (
-      <div className="min-h-screen bg-black px-4 py-7 text-white">
-        <div className="mx-auto w-full max-w-sm rounded-2xl border border-[#1A1A1A] bg-[#080808] p-5 shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-black tracking-tight">Acesso Administrativo</h1>
-              <p className="mt-1 text-xs text-zinc-400">Autentique para gerenciar produtos, pedidos e entregas.</p>
+      <div className="relative min-h-screen overflow-hidden bg-black text-white">
+        <img src="/admin-login-bg.svg" alt="Fachada Solar Supermercado" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-black/55" />
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-8">
+          <div className="w-full max-w-sm rounded-3xl border border-white/20 bg-[#080808]/78 p-6 shadow-[0_25px_80px_rgba(0,0,0,0.55)] backdrop-blur-md">
+            <div className="mb-5 text-center">
+              <img src="/logo-solar-wordmark.svg" alt="Solar Supermercado" className="mx-auto h-10 w-auto" />
+              <h1 className="mt-3 text-xl font-black tracking-tight">Painel Admin</h1>
+              <p className="mt-1 text-xs text-zinc-300">Acesse para gerenciar pedidos e entregas.</p>
             </div>
-            <div className="rounded-full border border-[#1A1A1A] p-2">
-              <User size={15} />
-            </div>
-          </div>
 
-          <form onSubmit={handleLogin} className="grid gap-2">
-            <input value={authForm.username} onChange={(event) => setAuthForm((state) => ({ ...state, username: event.target.value }))} placeholder="Usuario" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
-            <div className="relative">
-              <input type={showLoginPassword ? "text" : "password"} value={authForm.password} onChange={(event) => setAuthForm((state) => ({ ...state, password: event.target.value }))} placeholder="Senha" className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 pr-10 text-sm" />
-              <button type="button" onClick={() => setShowLoginPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400">
-                {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-            {authError ? <p className="text-xs text-red-400">{authError}</p> : null}
-            <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black">Entrar no Painel</button>
-          </form>
+            <form onSubmit={handleLogin} className="grid gap-3">
+              <input
+                value={authForm.username}
+                onChange={(event) => setAuthForm((state) => ({ ...state, username: event.target.value }))}
+                placeholder="Usuario"
+                className="rounded-xl border border-white/20 bg-black/55 px-3 py-2 text-sm"
+              />
+              <div className="relative">
+                <input
+                  type={showLoginPassword ? "text" : "password"}
+                  value={authForm.password}
+                  onChange={(event) => setAuthForm((state) => ({ ...state, password: event.target.value }))}
+                  placeholder="Senha"
+                  className="w-full rounded-xl border border-white/20 bg-black/55 px-3 py-2 pr-10 text-sm"
+                />
+                <button type="button" onClick={() => setShowLoginPassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-300">
+                  {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+              {authError ? <p className="text-xs text-red-300">{authError}</p> : null}
+              <button type="submit" className="rounded-xl bg-[#F6AE2D] py-2.5 text-sm font-black text-black">Entrar</button>
+            </form>
+          </div>
         </div>
       </div>
     );
