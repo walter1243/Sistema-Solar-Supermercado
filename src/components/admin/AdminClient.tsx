@@ -10,6 +10,7 @@ import {
   getAdminSettingsRemote,
   getDashboardSummary,
   getDeliveryList,
+  getCustomersForAdmin,
   getOrdersForAdmin,
   getProductsCatalog,
   listAdminUsersRemote,
@@ -19,7 +20,7 @@ import {
   sendCustomerAlertRemote,
   updateOrderStatusRemote,
 } from "@/lib/api";
-import { AdminSettings, AdminUser, DashboardSummary, Order, Product } from "@/types/domain";
+import { AdminSettings, AdminUser, CustomerAccount, DashboardSummary, Order, Product } from "@/types/domain";
 import {
   ChartNoAxesColumn,
   Download,
@@ -120,6 +121,7 @@ export default function AdminClient() {
   const [activeTab, setActiveTab] = useState<Tab>("dashboard");
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [customerAccounts, setCustomerAccounts] = useState<CustomerAccount[]>([]);
   const [deliveries, setDeliveries] = useState<Order[]>([]);
   const [summary, setSummary] = useState<DashboardSummary>({ revenueToday: 0, ordersToday: 0, productsToday: 0, totalProducts: 0 });
   const [settings, setSettings] = useState<AdminSettings>({
@@ -175,6 +177,7 @@ export default function AdminClient() {
   async function refreshAll() {
     setProducts(await getProductsCatalog());
     setOrders(await getOrdersForAdmin());
+    setCustomerAccounts(await getCustomersForAdmin());
     setDeliveries(await getDeliveryList());
     setSummary(await getDashboardSummary());
     setSettings(await getAdminSettingsRemote());
@@ -196,6 +199,7 @@ export default function AdminClient() {
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
 
   const uniqueCustomers = useMemo(() => {
+    const normalizePhone = (value: string) => value.replace(/\D/g, "");
     const customerMap = new Map<string, UniqueCustomer>();
     
     orders.forEach((order) => {
@@ -223,10 +227,22 @@ export default function AdminClient() {
       }
     });
     
-    return Array.from(customerMap.values()).sort((a, b) => 
+    const fromOrders = Array.from(customerMap.values());
+
+    const enriched = fromOrders.map((customer) => {
+      if (customer.customerId) return customer;
+      const matchedAccount = customerAccounts.find((account) => normalizePhone(account.phone) === normalizePhone(customer.phone));
+      if (!matchedAccount) return customer;
+      return {
+        ...customer,
+        customerId: matchedAccount.id,
+      };
+    });
+
+    return enriched.sort((a, b) => 
       new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
     );
-  }, [orders]);
+  }, [customerAccounts, orders]);
 
   useEffect(() => {
     if (!customerAlertForm.customerId && uniqueCustomers.length) {

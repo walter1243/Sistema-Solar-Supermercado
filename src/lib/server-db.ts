@@ -510,6 +510,22 @@ export async function saveCustomer(account: CustomerAccount): Promise<CustomerAc
   return account;
 }
 
+export async function getCustomers(): Promise<CustomerAccount[]> {
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM customers ORDER BY full_name ASC;`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    fullName: String(row.full_name),
+    phone: String(row.phone),
+    cpf: String(row.cpf || ""),
+    password: String(row.password),
+    street: row.street ? String(row.street) : undefined,
+    number: row.street_number ? String(row.street_number) : undefined,
+    reference: row.reference ? String(row.reference) : undefined,
+    cashbackBalance: Number(row.cashback_balance || 0),
+  }));
+}
+
 export async function getCustomerAlerts(customerId: string): Promise<CustomerAlert[]> {
   await ensureSchema();
   const { rows } = await sql`SELECT * FROM alerts WHERE customer_id = ${customerId} ORDER BY created_at DESC LIMIT 100;`;

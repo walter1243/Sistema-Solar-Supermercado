@@ -130,6 +130,11 @@ export async function getOrdersForAdmin(): Promise<Order[]> {
   return remote || [];
 }
 
+export async function getCustomersForAdmin(): Promise<CustomerAccount[]> {
+  const remote = unwrapData<CustomerAccount[]>(await apiFetch<unknown>("/api/customers", { method: "GET" }));
+  return remote || [];
+}
+
 export async function updateOrderStatusRemote(orderId: string, status: Order["status"], paymentConfirmed?: boolean): Promise<Order | null> {
   const remote = unwrapData<Order>(
     await apiFetch<unknown>(`/api/orders/${orderId}/status`, {
