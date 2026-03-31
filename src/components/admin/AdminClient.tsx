@@ -597,9 +597,9 @@ export default function AdminClient() {
           <div className="w-full max-w-sm rounded-3xl border border-white/20 bg-[#080808]/78 p-6 shadow-[0_25px_80px_rgba(0,0,0,0.55)] backdrop-blur-md">
             <div className="mb-5 text-center">
               <img
-                src="/image-removebg-preview.png"
+                src="/logo-solar-wordmark.svg"
                 alt="Solar Supermercado"
-                className="mx-auto h-14 w-auto max-w-[280px] object-contain sm:h-16 sm:max-w-[320px] md:h-20 md:max-w-[360px]"
+                className="mx-auto h-20 w-auto max-w-[360px] object-contain sm:h-24 sm:max-w-[420px] md:h-28 md:max-w-[480px]"
               />
               <h1 className="mt-3 text-xl font-black tracking-tight">Painel Admin</h1>
               <p className="mt-1 text-xs text-zinc-300">Acesse para gerenciar pedidos e entregas.</p>
