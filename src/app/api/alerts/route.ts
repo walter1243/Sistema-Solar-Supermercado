@@ -1,19 +1,7 @@
-import { kv } from "@vercel/kv";
+import { addCustomerAlert, getCustomerAlerts, markCustomerAlertAsRead } from "@/lib/server-db";
 import { NextRequest, NextResponse } from "next/server";
 
-type CustomerAlert = {
-  id: string;
-  title: string;
-  message: string;
-  createdAt: string;
-  readAt?: string;
-};
-
 export const dynamic = "force-dynamic";
-
-function alertsKey(customerId: string) {
-  return `solar:alerts:${customerId}`;
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,8 +10,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "customerId obrigatorio." }, { status: 400 });
     }
 
-    const data = (await kv.lrange(alertsKey(customerId), 0, -1)) as CustomerAlert[];
-    return NextResponse.json({ data: Array.isArray(data) ? data : [] });
+    const data = await getCustomerAlerts(customerId);
+    return NextResponse.json({ data });
   } catch {
     return NextResponse.json({ error: "Falha ao buscar alertas no servidor." }, { status: 500 });
   }
@@ -40,15 +28,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "customerId, title e message sao obrigatorios." }, { status: 400 });
     }
 
-    const alert: CustomerAlert = {
-      id: crypto.randomUUID(),
-      title,
-      message,
-      createdAt: new Date().toISOString(),
-    };
-
-    await kv.lpush(alertsKey(customerId), alert);
-    await kv.ltrim(alertsKey(customerId), 0, 99);
+    const alert = await addCustomerAlert(customerId, title, message);
 
     return NextResponse.json({ success: true, data: alert });
   } catch {
@@ -66,14 +46,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "customerId e alertId sao obrigatorios." }, { status: 400 });
     }
 
-    const key = alertsKey(customerId);
-    const alerts = ((await kv.lrange(key, 0, -1)) as CustomerAlert[]) || [];
-    const nextAlerts = alerts.map((alert) => (alert.id === alertId ? { ...alert, readAt: new Date().toISOString() } : alert));
-
-    await kv.del(key);
-    if (nextAlerts.length) {
-      await kv.rpush(key, ...nextAlerts);
-    }
+    await markCustomerAlertAsRead(customerId, alertId);
 
     return NextResponse.json({ success: true });
   } catch {

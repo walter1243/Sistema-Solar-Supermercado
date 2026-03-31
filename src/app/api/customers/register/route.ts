@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { customerByPhoneKey, saveCustomer } from "@/lib/server-db";
-import { kv } from "@vercel/kv";
+import { getCustomerByPhone, saveCustomer } from "@/lib/server-db";
 import { CustomerAccount } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   const body = (await request.json()) as CustomerAccount;
-  const phoneKey = customerByPhoneKey(body.phone);
-  const exists = await kv.get<string>(phoneKey);
+  const exists = await getCustomerByPhone(body.phone);
   if (exists) {
     return NextResponse.json({ error: "Telefone ja cadastrado." }, { status: 409 });
   }

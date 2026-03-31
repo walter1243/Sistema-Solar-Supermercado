@@ -1,12 +1,5 @@
-import { kv } from "@vercel/kv";
-import { AdminSettings, AdminUser, CustomerAccount, Order, Product } from "@/types/domain";
-
-const KEYS = {
-  products: "solar:products",
-  orders: "solar:orders",
-  settings: "solar:settings",
-  adminProfile: "solar:admin:profile",
-};
+import { sql } from "@vercel/postgres";
+import { AdminSettings, AdminUser, CustomerAccount, CustomerAlert, Order, Product } from "@/types/domain";
 
 const defaultSettings: AdminSettings = {
   pixKey: "",
@@ -50,30 +43,129 @@ const seedProducts: Product[] = [
   },
 ];
 
-export function customerKey(id: string) {
-  return `solar:customer:${id}`;
+let schemaReady: Promise<void> | null = null;
+
+function normalizePhone(phone: string) {
+  return phone.replace(/\D/g, "");
 }
 
-export function customerByPhoneKey(phone: string) {
-  return `solar:customer:phone:${phone.replace(/\D/g, "")}`;
+async function ensureSchema() {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS admin_settings (
+          id INTEGER PRIMARY KEY,
+          pix_key TEXT NOT NULL DEFAULT '',
+          whatsapp_number TEXT NOT NULL DEFAULT '',
+          categories JSONB NOT NULL,
+          delivery_minimum NUMERIC NOT NULL DEFAULT 150,
+          pickup_minimum NUMERIC NOT NULL DEFAULT 100
+        );
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS admin_users (
+          id INTEGER PRIMARY KEY,
+          username TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          profile_image TEXT NOT NULL DEFAULT '',
+          password TEXT NOT NULL
+        );
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS products (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          price NUMERIC NOT NULL,
+          image TEXT NOT NULL,
+          category TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS customers (
+          id TEXT PRIMARY KEY,
+          full_name TEXT NOT NULL,
+          phone TEXT UNIQUE NOT NULL,
+          cpf TEXT NOT NULL DEFAULT '',
+          password TEXT NOT NULL,
+          street TEXT,
+          street_number TEXT,
+          reference TEXT,
+          cashback_balance NUMERIC NOT NULL DEFAULT 0
+        );
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS orders (
+          id TEXT PRIMARY KEY,
+          items JSONB NOT NULL,
+          customer_snapshot JSONB NOT NULL,
+          total NUMERIC NOT NULL,
+          status TEXT NOT NULL,
+          payment_method TEXT NOT NULL,
+          fulfillment_method TEXT NOT NULL,
+          payment_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+          customer_id TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS alerts (
+          id TEXT PRIMARY KEY,
+          customer_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          message TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          read_at TIMESTAMPTZ
+        );
+      `;
+
+      await sql`
+        INSERT INTO admin_settings (id, pix_key, whatsapp_number, categories, delivery_minimum, pickup_minimum)
+        VALUES (1, ${defaultSettings.pixKey}, ${defaultSettings.whatsappNumber}, ${JSON.stringify(defaultSettings.categories)}::jsonb, ${defaultSettings.deliveryMinimum}, ${defaultSettings.pickupMinimum})
+        ON CONFLICT (id) DO NOTHING;
+      `;
+
+      await sql`
+        INSERT INTO admin_users (id, username, name, profile_image, password)
+        VALUES (1, ${defaultAdmin.username}, ${defaultAdmin.name}, ${defaultAdmin.profileImage || ""}, ${defaultAdmin.password || "123456"})
+        ON CONFLICT (id) DO NOTHING;
+      `;
+
+      const { rows: productRows } = await sql`SELECT COUNT(*)::int AS count FROM products;`;
+      if ((productRows[0]?.count || 0) === 0) {
+        for (const product of seedProducts) {
+          await sql`
+            INSERT INTO products (id, name, price, image, category, created_at)
+            VALUES (${product.id}, ${product.name}, ${product.price}, ${product.image}, ${product.category}, ${product.createdAt});
+          `;
+        }
+      }
+    })();
+  }
+  await schemaReady;
 }
 
 export async function getSettings(): Promise<AdminSettings> {
-  const data = (await kv.get<AdminSettings>(KEYS.settings)) || null;
-  if (!data) {
-    await kv.set(KEYS.settings, defaultSettings);
-    return defaultSettings;
-  }
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM admin_settings WHERE id = 1 LIMIT 1;`;
+  const data = rows[0];
+  if (!data) return defaultSettings;
   return {
-    ...defaultSettings,
-    ...data,
-    categories: data.categories?.length ? data.categories : defaultSettings.categories,
-    deliveryMinimum: Number.isFinite(data.deliveryMinimum) ? Number(data.deliveryMinimum) : defaultSettings.deliveryMinimum,
-    pickupMinimum: Number.isFinite(data.pickupMinimum) ? Number(data.pickupMinimum) : defaultSettings.pickupMinimum,
+    pixKey: String(data.pix_key || ""),
+    whatsappNumber: String(data.whatsapp_number || ""),
+    categories: Array.isArray(data.categories) && data.categories.length ? data.categories : defaultSettings.categories,
+    deliveryMinimum: Number(data.delivery_minimum || defaultSettings.deliveryMinimum),
+    pickupMinimum: Number(data.pickup_minimum || defaultSettings.pickupMinimum),
   };
 }
 
 export async function saveSettings(settings: AdminSettings): Promise<AdminSettings> {
+  await ensureSchema();
   const next: AdminSettings = {
     ...defaultSettings,
     ...settings,
@@ -81,64 +173,208 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
     deliveryMinimum: Number.isFinite(settings.deliveryMinimum) ? Number(settings.deliveryMinimum) : defaultSettings.deliveryMinimum,
     pickupMinimum: Number.isFinite(settings.pickupMinimum) ? Number(settings.pickupMinimum) : defaultSettings.pickupMinimum,
   };
-  await kv.set(KEYS.settings, next);
+  await sql`
+    UPDATE admin_settings
+    SET pix_key = ${next.pixKey},
+        whatsapp_number = ${next.whatsappNumber},
+        categories = ${JSON.stringify(next.categories)}::jsonb,
+        delivery_minimum = ${next.deliveryMinimum},
+        pickup_minimum = ${next.pickupMinimum}
+    WHERE id = 1;
+  `;
   return next;
 }
 
 export async function getAdminProfile(): Promise<AdminUser> {
-  const data = (await kv.get<AdminUser>(KEYS.adminProfile)) || null;
-  if (!data) {
-    await kv.set(KEYS.adminProfile, defaultAdmin);
-    return defaultAdmin;
-  }
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM admin_users WHERE id = 1 LIMIT 1;`;
+  const data = rows[0];
+  if (!data) return defaultAdmin;
   return {
-    ...defaultAdmin,
-    ...data,
+    username: String(data.username || defaultAdmin.username),
+    name: String(data.name || defaultAdmin.name),
+    profileImage: String(data.profile_image || ""),
+    password: String(data.password || defaultAdmin.password || "123456"),
   };
 }
 
 export async function saveAdminProfile(profile: AdminUser): Promise<AdminUser> {
+  await ensureSchema();
   const next = {
     ...defaultAdmin,
     ...profile,
   };
-  await kv.set(KEYS.adminProfile, next);
+  await sql`
+    UPDATE admin_users
+    SET username = ${next.username},
+        name = ${next.name},
+        profile_image = ${next.profileImage || ""},
+        password = ${next.password || "123456"}
+    WHERE id = 1;
+  `;
   return next;
 }
 
 export async function getProducts(): Promise<Product[]> {
-  const data = (await kv.get<Product[]>(KEYS.products)) || null;
-  if (!data || !data.length) {
-    await kv.set(KEYS.products, seedProducts);
-    return seedProducts;
-  }
-  return data;
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM products ORDER BY created_at DESC;`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    price: Number(row.price),
+    image: String(row.image),
+    category: String(row.category),
+    createdAt: new Date(row.created_at).toISOString(),
+  }));
 }
 
 export async function saveProducts(products: Product[]): Promise<void> {
-  await kv.set(KEYS.products, products);
+  await ensureSchema();
+  await sql`DELETE FROM products;`;
+  for (const product of products) {
+    await sql`
+      INSERT INTO products (id, name, price, image, category, created_at)
+      VALUES (${product.id}, ${product.name}, ${product.price}, ${product.image}, ${product.category}, ${product.createdAt});
+    `;
+  }
 }
 
 export async function getOrders(): Promise<Order[]> {
-  return (await kv.get<Order[]>(KEYS.orders)) || [];
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM orders ORDER BY created_at DESC;`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    items: row.items,
+    customer: row.customer_snapshot,
+    total: Number(row.total),
+    status: row.status,
+    paymentMethod: row.payment_method,
+    fulfillmentMethod: row.fulfillment_method,
+    paymentConfirmed: Boolean(row.payment_confirmed),
+    customerId: row.customer_id ? String(row.customer_id) : undefined,
+    createdAt: new Date(row.created_at).toISOString(),
+  })) as Order[];
 }
 
 export async function saveOrders(orders: Order[]): Promise<void> {
-  await kv.set(KEYS.orders, orders);
+  await ensureSchema();
+  await sql`DELETE FROM orders;`;
+  for (const order of orders) {
+    await sql`
+      INSERT INTO orders (id, items, customer_snapshot, total, status, payment_method, fulfillment_method, payment_confirmed, customer_id, created_at)
+      VALUES (
+        ${order.id},
+        ${JSON.stringify(order.items)}::jsonb,
+        ${JSON.stringify(order.customer)}::jsonb,
+        ${order.total},
+        ${order.status},
+        ${order.paymentMethod},
+        ${order.fulfillmentMethod},
+        ${Boolean(order.paymentConfirmed)},
+        ${order.customerId || null},
+        ${order.createdAt}
+      );
+    `;
+  }
 }
 
 export async function getCustomerById(id: string): Promise<CustomerAccount | null> {
-  return ((await kv.get<CustomerAccount>(customerKey(id))) || null) as CustomerAccount | null;
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM customers WHERE id = ${id} LIMIT 1;`;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    fullName: String(row.full_name),
+    phone: String(row.phone),
+    cpf: String(row.cpf || ""),
+    password: String(row.password),
+    street: row.street ? String(row.street) : undefined,
+    number: row.street_number ? String(row.street_number) : undefined,
+    reference: row.reference ? String(row.reference) : undefined,
+    cashbackBalance: Number(row.cashback_balance || 0),
+  };
 }
 
 export async function getCustomerByPhone(phone: string): Promise<CustomerAccount | null> {
-  const customerId = (await kv.get<string>(customerByPhoneKey(phone))) || null;
-  if (!customerId) return null;
-  return getCustomerById(customerId);
+  await ensureSchema();
+  const normalized = normalizePhone(phone);
+  const { rows } = await sql`SELECT * FROM customers WHERE regexp_replace(phone, '[^0-9]', '', 'g') = ${normalized} LIMIT 1;`;
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    fullName: String(row.full_name),
+    phone: String(row.phone),
+    cpf: String(row.cpf || ""),
+    password: String(row.password),
+    street: row.street ? String(row.street) : undefined,
+    number: row.street_number ? String(row.street_number) : undefined,
+    reference: row.reference ? String(row.reference) : undefined,
+    cashbackBalance: Number(row.cashback_balance || 0),
+  };
 }
 
 export async function saveCustomer(account: CustomerAccount): Promise<CustomerAccount> {
-  await kv.set(customerKey(account.id), account);
-  await kv.set(customerByPhoneKey(account.phone), account.id);
+  await ensureSchema();
+  await sql`
+    INSERT INTO customers (id, full_name, phone, cpf, password, street, street_number, reference, cashback_balance)
+    VALUES (
+      ${account.id},
+      ${account.fullName},
+      ${account.phone},
+      ${account.cpf || ""},
+      ${account.password},
+      ${account.street || null},
+      ${account.number || null},
+      ${account.reference || null},
+      ${account.cashbackBalance || 0}
+    )
+    ON CONFLICT (id) DO UPDATE
+    SET full_name = EXCLUDED.full_name,
+        phone = EXCLUDED.phone,
+        cpf = EXCLUDED.cpf,
+        password = EXCLUDED.password,
+        street = EXCLUDED.street,
+        street_number = EXCLUDED.street_number,
+        reference = EXCLUDED.reference,
+        cashback_balance = EXCLUDED.cashback_balance;
+  `;
   return account;
+}
+
+export async function getCustomerAlerts(customerId: string): Promise<CustomerAlert[]> {
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM alerts WHERE customer_id = ${customerId} ORDER BY created_at DESC LIMIT 100;`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    title: String(row.title),
+    message: String(row.message),
+    createdAt: new Date(row.created_at).toISOString(),
+    readAt: row.read_at ? new Date(row.read_at).toISOString() : undefined,
+  }));
+}
+
+export async function addCustomerAlert(customerId: string, title: string, message: string): Promise<CustomerAlert> {
+  await ensureSchema();
+  const alert: CustomerAlert = {
+    id: crypto.randomUUID(),
+    title,
+    message,
+    createdAt: new Date().toISOString(),
+  };
+  await sql`
+    INSERT INTO alerts (id, customer_id, title, message, created_at)
+    VALUES (${alert.id}, ${customerId}, ${title}, ${message}, ${alert.createdAt});
+  `;
+  return alert;
+}
+
+export async function markCustomerAlertAsRead(customerId: string, alertId: string): Promise<void> {
+  await ensureSchema();
+  await sql`
+    UPDATE alerts
+    SET read_at = NOW()
+    WHERE id = ${alertId} AND customer_id = ${customerId};
+  `;
 }
