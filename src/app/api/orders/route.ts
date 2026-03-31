@@ -17,6 +17,9 @@ export async function POST(request: Request) {
     id: body.id || crypto.randomUUID(),
     createdAt: body.createdAt || new Date().toISOString(),
     cashbackGranted: Boolean(body.cashbackGranted),
+    pixProofFileName: body.pixProofFileName || undefined,
+    pixProofDataUrl: body.pixProofDataUrl || undefined,
+    pixProofUploadedAt: body.pixProofUploadedAt || undefined,
   };
   await saveOrders([next, ...orders.filter((item) => item.id !== next.id)]);
   return NextResponse.json({ data: next });

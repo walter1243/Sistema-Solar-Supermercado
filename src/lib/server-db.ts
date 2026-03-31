@@ -159,6 +159,9 @@ async function ensureSchema() {
           fulfillment_method TEXT NOT NULL,
           payment_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
           cashback_granted BOOLEAN NOT NULL DEFAULT FALSE,
+          pix_proof_file_name TEXT,
+          pix_proof_data_url TEXT,
+          pix_proof_uploaded_at TIMESTAMPTZ,
           customer_id TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -167,6 +170,21 @@ async function ensureSchema() {
       await sql`
         ALTER TABLE orders
         ADD COLUMN IF NOT EXISTS cashback_granted BOOLEAN NOT NULL DEFAULT FALSE;
+      `;
+
+      await sql`
+        ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS pix_proof_file_name TEXT;
+      `;
+
+      await sql`
+        ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS pix_proof_data_url TEXT;
+      `;
+
+      await sql`
+        ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS pix_proof_uploaded_at TIMESTAMPTZ;
       `;
 
       await sql`
@@ -393,6 +411,9 @@ export async function getOrders(): Promise<Order[]> {
     fulfillmentMethod: row.fulfillment_method,
     paymentConfirmed: Boolean(row.payment_confirmed),
     cashbackGranted: Boolean(row.cashback_granted),
+    pixProofFileName: row.pix_proof_file_name ? String(row.pix_proof_file_name) : undefined,
+    pixProofDataUrl: row.pix_proof_data_url ? String(row.pix_proof_data_url) : undefined,
+    pixProofUploadedAt: row.pix_proof_uploaded_at ? new Date(row.pix_proof_uploaded_at).toISOString() : undefined,
     customerId: row.customer_id ? String(row.customer_id) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
   })) as Order[];
@@ -403,7 +424,7 @@ export async function saveOrders(orders: Order[]): Promise<void> {
   await sql`DELETE FROM orders;`;
   for (const order of orders) {
     await sql`
-      INSERT INTO orders (id, items, customer_snapshot, total, status, payment_method, fulfillment_method, payment_confirmed, cashback_granted, customer_id, created_at)
+      INSERT INTO orders (id, items, customer_snapshot, total, status, payment_method, fulfillment_method, payment_confirmed, cashback_granted, pix_proof_file_name, pix_proof_data_url, pix_proof_uploaded_at, customer_id, created_at)
       VALUES (
         ${order.id},
         ${JSON.stringify(order.items)}::jsonb,
@@ -414,6 +435,9 @@ export async function saveOrders(orders: Order[]): Promise<void> {
         ${order.fulfillmentMethod},
         ${Boolean(order.paymentConfirmed)},
         ${Boolean(order.cashbackGranted)},
+        ${order.pixProofFileName || null},
+        ${order.pixProofDataUrl || null},
+        ${order.pixProofUploadedAt || null},
         ${order.customerId || null},
         ${order.createdAt}
       );

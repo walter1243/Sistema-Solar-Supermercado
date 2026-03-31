@@ -747,6 +747,11 @@ export default function AdminClient() {
                         <div className="flex items-center justify-between"><p className="font-semibold">Pedido #{order.id.slice(0, 8)}</p><span className="rounded-full border border-[#1A1A1A] px-2 py-0.5 text-[11px] uppercase text-zinc-400">{order.status}</span></div>
                         <p className="mt-1 text-zinc-400">Cliente: {order.customer.fullName}</p>
                         <p className="text-zinc-400">Pagamento: {order.paymentMethod}</p>
+                        {order.paymentMethod === "pix" ? (
+                          <p className={`text-xs ${order.pixProofDataUrl ? "text-[#9BFFD1]" : "text-[#FFD98A]"}`}>
+                            {order.pixProofDataUrl ? "Comprovante Pix recebido" : "Aguardando comprovante Pix"}
+                          </p>
+                        ) : null}
                         <p className="text-zinc-400">Atendimento: {order.fulfillmentMethod}</p>
                         <p className="mt-1 text-[#B2FF00]">{formatCurrency(order.total)}</p>
                       </button>
@@ -754,7 +759,7 @@ export default function AdminClient() {
                   </div>
                 </div>
                 <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
-                  <h2 className="text-lg font-bold">Enviar para WhatsApp</h2>
+                  <h2 className="text-lg font-bold">Fluxo do pedido</h2>
                   {selectedOrder ? (
                     <>
                       <div className="mt-3 rounded-xl border border-[#1A1A1A] p-3 text-sm">
@@ -763,6 +768,40 @@ export default function AdminClient() {
                         <p className="mt-2 text-zinc-400">Pagamento: {selectedOrder.paymentMethod}</p>
                         <p className="text-zinc-400">Atendimento: {selectedOrder.fulfillmentMethod}</p>
                       </div>
+                      {selectedOrder.paymentMethod === "pix" ? (
+                        <div className="mt-3 rounded-xl border border-[#1A1A1A] p-3 text-sm">
+                          <p className="font-semibold">Comprovante Pix</p>
+                          <p className={`mt-1 text-xs ${selectedOrder.pixProofDataUrl ? "text-[#9BFFD1]" : "text-[#FFD98A]"}`}>
+                            {selectedOrder.pixProofDataUrl ? "Cliente enviou comprovante." : "Cliente ainda nao enviou comprovante."}
+                          </p>
+                          {selectedOrder.pixProofUploadedAt ? (
+                            <p className="mt-1 text-[11px] text-zinc-500">Enviado em {new Date(selectedOrder.pixProofUploadedAt).toLocaleString("pt-BR")}</p>
+                          ) : null}
+
+                          {selectedOrder.pixProofDataUrl ? (
+                            <>
+                              {selectedOrder.pixProofDataUrl.startsWith("data:image/") ? (
+                                <img src={selectedOrder.pixProofDataUrl} alt="Comprovante Pix" className="mt-2 max-h-48 w-full rounded-xl object-contain" />
+                              ) : null}
+                              <a
+                                href={selectedOrder.pixProofDataUrl}
+                                download={selectedOrder.pixProofFileName || `comprovante-${selectedOrder.id.slice(0, 8)}`}
+                                className="mt-2 inline-flex w-full items-center justify-center rounded-xl border border-[#1A1A1A] px-3 py-2 text-xs"
+                              >
+                                Baixar comprovante enviado
+                              </a>
+                            </>
+                          ) : null}
+
+                          <button
+                            type="button"
+                            onClick={() => handlePaymentConfirmation(selectedOrder.id, !selectedOrder.paymentConfirmed)}
+                            className={`mt-2 w-full rounded-xl border px-3 py-2 text-sm ${selectedOrder.paymentConfirmed ? "border-[#B2FF00] text-[#B2FF00]" : "border-[#1A1A1A] text-zinc-300"}`}
+                          >
+                            {selectedOrder.paymentConfirmed ? "Pagamento OK" : "Confirmar pagamento Pix"}
+                          </button>
+                        </div>
+                      ) : null}
                       <button type="button" onClick={() => sendOrderToWhatsApp(selectedOrder)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] py-2 font-black text-black"><MessageCircle size={16} /> Enviar pedido selecionado</button>
                     </>
                   ) : <p className="mt-3 text-sm text-zinc-500">Selecione um pedido para montar a mensagem correta.</p>}

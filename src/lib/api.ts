@@ -140,6 +140,16 @@ export async function updateOrderStatusRemote(orderId: string, status: Order["st
   return remote || null;
 }
 
+export async function uploadOrderPixProofRemote(orderId: string, pixProofFileName: string, pixProofDataUrl: string): Promise<Order | null> {
+  const remote = unwrapData<Order>(
+    await apiFetch<unknown>(`/api/orders/${orderId}/proof`, {
+      method: "PATCH",
+      body: JSON.stringify({ pixProofFileName, pixProofDataUrl }),
+    }),
+  );
+  return remote || null;
+}
+
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const remote = unwrapData<DashboardSummary>(await apiFetch<unknown>("/api/dashboard", { method: "GET" }));
   return remote || { revenueToday: 0, ordersToday: 0, productsToday: 0, totalProducts: 0 };

@@ -11,12 +11,14 @@ import {
   loginCustomerRemote,
   postOrder,
   registerCustomerRemote,
+  uploadOrderPixProofRemote,
   updateCustomerAccountRemote,
 } from "@/lib/api";
 import { AdminSettings, CartItem, CustomerAccount, CustomerProfile, Order, Product } from "@/types/domain";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Copy,
+  Download,
   Eye,
   EyeOff,
   MapPin,
@@ -27,6 +29,7 @@ import {
   Search,
   ShoppingCart,
   Trash2,
+  Upload,
   User,
   X,
   Bell,
@@ -130,6 +133,11 @@ export default function StorefrontClient() {
   const [customerSession, setCustomerSession] = useState<CustomerAccount | null>(null);
   const [customerAlerts, setCustomerAlerts] = useState<CustomerAlert[]>([]);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
+  const [lastPixOrder, setLastPixOrder] = useState<Order | null>(null);
+  const [pixFlowOpen, setPixFlowOpen] = useState(false);
+  const [pixProofFile, setPixProofFile] = useState<File | null>(null);
+  const [pixProofUploading, setPixProofUploading] = useState(false);
+  const [pixProofFeedback, setPixProofFeedback] = useState("");
   const [loginForm, setLoginForm] = useState({ phone: "", password: "" });
   const [registerForm, setRegisterForm] = useState({
     fullName: "",
@@ -351,6 +359,69 @@ export default function StorefrontClient() {
     window.open(`https://wa.me/${waPhone}`, "_blank", "noopener,noreferrer");
   }
 
+  function buildPixReceiptContent(order: Order) {
+    const lines = [
+      "COMPROVANTE PIX - SOLAR SUPERMERCADO",
+      `Pedido: ${order.id}`,
+      `Data: ${new Date(order.createdAt).toLocaleString("pt-BR")}`,
+      `Cliente: ${order.customer.fullName}`,
+      `Telefone: ${order.customer.phone}`,
+      `Pagamento: PIX`,
+      `Atendimento: ${order.fulfillmentMethod === "entrega" ? "Entrega" : "Retirada"}`,
+      `Valor total: ${formatCurrency(order.total)}`,
+      `Chave Pix: ${settings.pixKey || "Nao definida"}`,
+      "",
+      "Itens:",
+      ...order.items.map((item) => `${item.quantity}x ${item.name} - ${formatCurrency(item.unitPrice * item.quantity)}`),
+    ];
+    return lines.join("\n");
+  }
+
+  function downloadPixReceipt(order: Order) {
+    const content = buildPixReceiptContent(order);
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `comprovante-pix-${order.id.slice(0, 8)}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleSendPixProof() {
+    if (!lastPixOrder?.id || !pixProofFile) {
+      setPixProofFeedback("Selecione o comprovante para enviar ao painel.");
+      return;
+    }
+
+    const toDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("Falha ao ler arquivo"));
+      reader.readAsDataURL(file);
+    });
+
+    try {
+      setPixProofUploading(true);
+      const dataUrl = await toDataUrl(pixProofFile);
+      const updatedOrder = await uploadOrderPixProofRemote(lastPixOrder.id, pixProofFile.name, dataUrl);
+      if (!updatedOrder) {
+        setPixProofFeedback("Nao foi possivel enviar o comprovante. Tente novamente.");
+        return;
+      }
+      setLastPixOrder(updatedOrder);
+      setOrders(await getOrdersForAdmin());
+      setPixProofFeedback("Comprovante enviado com sucesso para analise do admin.");
+      setPixProofFile(null);
+    } catch {
+      setPixProofFeedback("Nao foi possivel enviar o comprovante. Tente novamente.");
+    } finally {
+      setPixProofUploading(false);
+    }
+  }
+
   async function submitOrder() {
     if (!cart.length) return;
 
@@ -405,6 +476,16 @@ export default function StorefrontClient() {
     };
 
     await postOrder(order);
+
+    if (order.paymentMethod === "pix") {
+      setLastPixOrder(order);
+      setPixFlowOpen(true);
+      setPixProofFile(null);
+      setPixProofFeedback("");
+    } else {
+      setLastPixOrder(null);
+      setPixFlowOpen(false);
+    }
 
     if (customerSession) {
       const updatedAccount: CustomerAccount = {
@@ -582,6 +663,19 @@ export default function StorefrontClient() {
             <p className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">Status do pedido</p>
             <p className="mt-1 text-sm font-semibold text-[#B2FF00]">{getStatusMessage(latestTrackedOrder.status, latestTrackedOrder.fulfillmentMethod)}</p>
             <p className="mt-1 text-xs text-zinc-400">Pedido #{latestTrackedOrder.id.slice(0, 8)} • pagamento {latestTrackedOrder.paymentConfirmed ? "confirmado" : "pendente"}</p>
+            {latestTrackedOrder.paymentMethod === "pix" && !latestTrackedOrder.paymentConfirmed ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setLastPixOrder(latestTrackedOrder);
+                  setPixFlowOpen(true);
+                  setPixProofFeedback("");
+                }}
+                className="mt-2 w-full rounded-xl border border-[#1A1A1A] py-2 text-xs text-zinc-300"
+              >
+                Enviar ou reenviar comprovante Pix
+              </button>
+            ) : null}
           </div>
         ) : null}
 
@@ -875,6 +969,55 @@ export default function StorefrontClient() {
             </motion.aside>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {pixFlowOpen && lastPixOrder ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/70 p-4" onClick={() => setPixFlowOpen(false)}>
+            <motion.div initial={{ y: 25, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 25, opacity: 0 }} onClick={(event) => event.stopPropagation()} className="mx-auto mt-8 w-full max-w-md rounded-3xl border border-[#1A1A1A] bg-[#080808] p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-black">Fluxo do Pagamento Pix</h3>
+                <button type="button" onClick={() => setPixFlowOpen(false)} className="rounded-full border border-[#1A1A1A] p-1.5"><X size={14} /></button>
+              </div>
+
+              <p className="mt-2 text-xs text-zinc-400">Pedido #{lastPixOrder.id.slice(0, 8)} • total {formatCurrency(lastPixOrder.total)}</p>
+              <p className="mt-1 text-[11px] text-zinc-500">1. Pague no Pix usando a chave abaixo.</p>
+              <p className="mt-1 break-all text-sm font-semibold text-[#B2FF00]">{settings.pixKey || "Defina a chave Pix no painel admin"}</p>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <button type="button" onClick={copyPixKey} disabled={!settings.pixKey} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:opacity-45">
+                  <Copy size={14} /> Copiar chave Pix
+                </button>
+                <button type="button" onClick={() => downloadPixReceipt(lastPixOrder)} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] py-2 text-sm">
+                  <Download size={14} /> Baixar comprovante
+                </button>
+              </div>
+
+              <p className="mt-3 text-[11px] text-zinc-500">2. Envie o arquivo do comprovante para o painel administrativo confirmar seu pagamento.</p>
+              <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] px-3 py-2 text-sm">
+                <Upload size={14} />
+                {pixProofFile ? `Arquivo: ${pixProofFile.name}` : "Selecionar comprovante"}
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="hidden"
+                  onChange={(event) => setPixProofFile(event.target.files?.[0] || null)}
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => void handleSendPixProof()}
+                disabled={!pixProofFile || pixProofUploading}
+                className="mt-2 w-full rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {pixProofUploading ? "Enviando comprovante..." : "Enviar comprovante ao admin"}
+              </button>
+
+              {pixProofFeedback ? <p className="mt-2 text-center text-xs text-zinc-300">{pixProofFeedback}</p> : null}
+            </motion.div>
+          </motion.div>
+        ) : null}
       </AnimatePresence>
 
       <AnimatePresence>

@@ -37,6 +37,9 @@ export type Order = {
   fulfillmentMethod: "entrega" | "retirada";
   paymentConfirmed?: boolean;
   cashbackGranted?: boolean;
+  pixProofFileName?: string;
+  pixProofDataUrl?: string;
+  pixProofUploadedAt?: string;
   customerId?: string;
   createdAt: string;
 };
