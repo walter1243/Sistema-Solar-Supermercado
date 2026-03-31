@@ -1,5 +1,6 @@
 "use client";
 
+import { jsPDF } from "jspdf";
 import {
   createProduct,
   getAdminSettingsRemote,
@@ -23,6 +24,7 @@ import {
 import { AdminSettings, AdminUser, DashboardSummary, Order, Product } from "@/types/domain";
 import {
   ChartNoAxesColumn,
+  Download,
   Eye,
   EyeOff,
   ImagePlus,
@@ -35,11 +37,12 @@ import {
   Settings2,
   Truck,
   User,
+  Users,
   X,
 } from "lucide-react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 
-type Tab = "dashboard" | "produtos" | "pedidos" | "entregas";
+type Tab = "dashboard" | "produtos" | "pedidos" | "entregas" | "clientes";
 
 type ProductFormState = {
   name: string;
@@ -48,11 +51,22 @@ type ProductFormState = {
   category: string;
 };
 
+type UniqueCustomer = {
+  fullName: string;
+  phone: string;
+  cpf: string;
+  address: string;
+  totalOrders: number;
+  totalSpent: number;
+  lastOrderDate: string;
+};
+
 const tabs: Array<{ id: Tab; label: string; icon: ComponentType<{ size?: number }> }> = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "produtos", label: "Produtos", icon: PackageSearch },
   { id: "pedidos", label: "Pedidos", icon: ReceiptText },
   { id: "entregas", label: "Entregas", icon: Truck },
+  { id: "clientes", label: "Clientes", icon: Users },
 ];
 
 const initialProduct: ProductFormState = {
@@ -150,6 +164,37 @@ export default function AdminClient() {
   }, [orders]);
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
+
+  const uniqueCustomers = useMemo(() => {
+    const customerMap = new Map<string, UniqueCustomer>();
+    
+    orders.forEach((order) => {
+      const key = order.customer.phone;
+      
+      if (customerMap.has(key)) {
+        const existing = customerMap.get(key)!;
+        existing.totalOrders += 1;
+        existing.totalSpent += order.total;
+        if (new Date(order.createdAt) > new Date(existing.lastOrderDate)) {
+          existing.lastOrderDate = order.createdAt;
+        }
+      } else {
+        customerMap.set(key, {
+          fullName: order.customer.fullName,
+          phone: order.customer.phone,
+          cpf: order.customer.cpf,
+          address: order.customer.address,
+          totalOrders: 1,
+          totalSpent: order.total,
+          lastOrderDate: order.createdAt,
+        });
+      }
+    });
+    
+    return Array.from(customerMap.values()).sort((a, b) => 
+      new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
+    );
+  }, [orders]);
 
   function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -291,6 +336,105 @@ export default function AdminClient() {
       setProfileForm((current) => ({ ...current, profileImage: result }));
     };
     reader.readAsDataURL(file);
+  }
+
+  function exportCustomersToPDF() {
+    if (uniqueCustomers.length === 0) {
+      setAdminNotice({ type: "error", text: "Nenhum cliente cadastrado para exportar." });
+      return;
+    }
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    
+    // Título
+    doc.setFontSize(16);
+    doc.text("Cadastro de Clientes", pageWidth / 2, 15, { align: "center" });
+    
+    // Data de exportação
+    doc.setFontSize(10);
+    doc.text(`Data: ${new Date().toLocaleDateString("pt-BR")}`, pageWidth / 2, 25, { align: "center" });
+    
+    // Colunas da tabela
+    const columns = [
+      { header: "Nome", width: 40 },
+      { header: "Telefone", width: 30 },
+      { header: "CPF", width: 30 },
+      { header: "Endereço", width: 40 },
+      { header: "Pedidos", width: 15 },
+      { header: "Total Gasto", width: 30 },
+    ];
+    
+    // Posição inicial
+    let yPosition = 35;
+    const rowHeight = 8;
+    const margin = 10;
+    
+    // Cabeçalho da tabela
+    doc.setFontSize(11);
+    doc.setFont("", "bold");
+    doc.setFillColor(50, 50, 50);
+    doc.setTextColor(255, 255, 255);
+    
+    let xPosition = margin;
+    columns.forEach((col) => {
+      doc.text(col.header, xPosition, yPosition, { maxWidth: col.width });
+      xPosition += col.width;
+    });
+    
+    yPosition += rowHeight;
+    
+    // Dados das linhas
+    doc.setFont("", "normal");
+    doc.setTextColor(0, 0, 0);
+    
+    uniqueCustomers.forEach((customer) => {
+      if (yPosition > pageHeight - margin) {
+        doc.addPage();
+        yPosition = margin + rowHeight;
+      }
+      
+      xPosition = margin;
+      
+      // Nome
+      doc.text(customer.fullName.substring(0, 30), xPosition, yPosition, { maxWidth: columns[0].width });
+      xPosition += columns[0].width;
+      
+      // Telefone
+      doc.text(customer.phone, xPosition, yPosition, { maxWidth: columns[1].width });
+      xPosition += columns[1].width;
+      
+      // CPF
+      doc.text(customer.cpf, xPosition, yPosition, { maxWidth: columns[2].width });
+      xPosition += columns[2].width;
+      
+      // Endereço
+      doc.text(customer.address.substring(0, 30), xPosition, yPosition, { maxWidth: columns[3].width });
+      xPosition += columns[3].width;
+      
+      // Número de pedidos
+      doc.text(customer.totalOrders.toString(), xPosition, yPosition, { maxWidth: columns[4].width, align: "center" });
+      xPosition += columns[4].width;
+      
+      // Total gasto
+      doc.text(formatCurrency(customer.totalSpent), xPosition, yPosition, { maxWidth: columns[5].width, align: "right" });
+      
+      yPosition += rowHeight;
+    });
+    
+    // Rodapé
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(9);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Página ${i} de ${pageCount}`, pageWidth / 2, pageHeight - 5, { align: "center" });
+    }
+    
+    // Download
+    doc.save(`clientes-solarmercado-${new Date().toISOString().split("T")[0]}.pdf`);
+    setAdminNotice({ type: "success", text: `PDF gerado com ${uniqueCustomers.length} cliente(s).` });
   }
 
   const commandButtons = (
@@ -549,6 +693,53 @@ export default function AdminClient() {
                     </article>
                   ))}
                 </div>
+              </section>
+            )}
+
+            {activeTab === "clientes" && (
+              <section className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold">Cadastro de Clientes</h2>
+                    <p className="mt-1 text-xs text-zinc-400">Total de {uniqueCustomers.length} cliente(s) com pedidos</p>
+                  </div>
+                  <button type="button" onClick={exportCustomersToPDF} className="flex items-center gap-2 rounded-xl bg-[#00AAFF] px-4 py-2 text-sm font-black text-black">
+                    <Download size={16} /> Exportar PDF
+                  </button>
+                </div>
+
+                {uniqueCustomers.length === 0 ? (
+                  <p className="text-sm text-zinc-500">Nenhum cliente cadastrado ainda.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[#1A1A1A]">
+                          <th className="px-3 py-2 text-left font-semibold text-zinc-300">Nome</th>
+                          <th className="px-3 py-2 text-left font-semibold text-zinc-300">Telefone</th>
+                          <th className="px-3 py-2 text-left font-semibold text-zinc-300">CPF</th>
+                          <th className="px-3 py-2 text-left font-semibold text-zinc-300">Endereço</th>
+                          <th className="px-3 py-2 text-center font-semibold text-zinc-300">Pedidos</th>
+                          <th className="px-3 py-2 text-right font-semibold text-zinc-300">Total Gasto</th>
+                          <th className="px-3 py-2 text-left font-semibold text-zinc-300">Último Pedido</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {uniqueCustomers.map((customer, index) => (
+                          <tr key={`${customer.phone}-${index}`} className="border-b border-[#1A1A1A] hover:bg-black/30">
+                            <td className="px-3 py-3 text-white">{customer.fullName}</td>
+                            <td className="px-3 py-3 text-zinc-400">{customer.phone}</td>
+                            <td className="px-3 py-3 text-zinc-400">{customer.cpf}</td>
+                            <td className="px-3 py-3 text-zinc-400">{customer.address.substring(0, 40)}</td>
+                            <td className="px-3 py-3 text-center text-[#B2FF00] font-semibold">{customer.totalOrders}</td>
+                            <td className="px-3 py-3 text-right text-[#B2FF00] font-semibold">{formatCurrency(customer.totalSpent)}</td>
+                            <td className="px-3 py-3 text-zinc-400 text-xs">{new Date(customer.lastOrderDate).toLocaleDateString("pt-BR")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </section>
             )}
           </main>
