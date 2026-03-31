@@ -742,10 +742,14 @@ export default function AdminClient() {
                 <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
                   <h2 className="text-lg font-bold">Pedidos Recebidos</h2>
                   <div className="mt-3 space-y-3">
-                    {orders.length === 0 ? <p className="text-sm text-zinc-500">Nenhum pedido ainda.</p> : orders.map((order) => (
+                    {orders.length === 0 ? <p className="text-sm text-zinc-500">Nenhum pedido ainda.</p> : orders.map((order, index) => (
                       <button key={order.id} type="button" onClick={() => setSelectedOrderId(order.id)} className={`w-full rounded-xl border p-3 text-left text-sm ${selectedOrderId === order.id ? "border-[#B2FF00] bg-[#B2FF00]/5" : "border-[#1A1A1A]"}`}>
-                        <div className="flex items-center justify-between"><p className="font-semibold">Pedido #{order.id.slice(0, 8)}</p><span className="rounded-full border border-[#1A1A1A] px-2 py-0.5 text-[11px] uppercase text-zinc-400">{order.status}</span></div>
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold">Pedido {index + 1}</p>
+                          <span className="rounded-full border border-[#1A1A1A] px-2 py-0.5 text-[11px] uppercase text-zinc-400">{order.status}</span>
+                        </div>
                         <p className="mt-1 text-zinc-400">Cliente: {order.customer.fullName}</p>
+                        <p className="text-zinc-400">Hora: {new Date(order.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
                         <p className="text-zinc-400">Pagamento: {order.paymentMethod}</p>
                         {order.paymentMethod === "pix" ? (
                           <p className={`text-xs ${order.pixProofDataUrl ? "text-[#9BFFD1]" : "text-[#FFD98A]"}`}>

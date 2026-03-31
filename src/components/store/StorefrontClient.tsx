@@ -359,6 +359,19 @@ export default function StorefrontClient() {
     window.open(`https://wa.me/${waPhone}`, "_blank", "noopener,noreferrer");
   }
 
+  function openPixProofWhatsApp(order: Order) {
+    const phone = settings.whatsappNumber.replace(/\D/g, "");
+    if (!phone) return;
+    const waPhone = phone.startsWith("55") ? phone : `55${phone}`;
+    const message = [
+      "Enviar comprovante de pagamento para processar/separar o pedido.",
+      `Pedido: #${order.id.slice(0, 8)}`,
+      `Cliente: ${order.customer.fullName}`,
+      `Total: ${formatCurrency(order.total)}`,
+    ].join("\n");
+    window.open(`https://wa.me/${waPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+  }
+
   function buildPixReceiptContent(order: Order) {
     const lines = [
       "COMPROVANTE PIX - SOLAR SUPERMERCADO",
@@ -1014,6 +1027,14 @@ export default function StorefrontClient() {
                 {pixProofUploading ? "Enviando comprovante..." : "Enviar comprovante ao admin"}
               </button>
 
+              <button
+                type="button"
+                onClick={() => openPixProofWhatsApp(lastPixOrder)}
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-[#25D366] py-2 text-sm text-[#25D366]"
+              >
+                <MessageCircle size={14} /> Enviar comprovante via WhatsApp
+              </button>
+
               {pixProofFeedback ? <p className="mt-2 text-center text-xs text-zinc-300">{pixProofFeedback}</p> : null}
             </motion.div>
           </motion.div>
@@ -1022,17 +1043,22 @@ export default function StorefrontClient() {
 
       <AnimatePresence>
         {Boolean(settings.whatsappNumber.replace(/\D/g, "")) ? (
-          <motion.button
-            type="button"
-            onClick={openCompanyWhatsApp}
+          <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
-            className="fixed bottom-24 right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
-            aria-label="Abrir WhatsApp"
+            className="fixed bottom-24 right-4 z-40 flex items-center gap-2"
           >
-            <MessageCircle size={24} />
-          </motion.button>
+            <span className="rounded-full border border-[#1A1A1A] bg-black/90 px-3 py-1 text-xs font-semibold text-[#25D366] md:hidden">WhatsApp</span>
+            <button
+              type="button"
+              onClick={openCompanyWhatsApp}
+              className="grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
+              aria-label="Abrir WhatsApp"
+            >
+              <MessageCircle size={24} />
+            </button>
+          </motion.div>
         ) : null}
       </AnimatePresence>
 
