@@ -525,7 +525,7 @@ export default function AdminClient() {
   if (!adminUser) {
     return (
       <div className="relative min-h-screen overflow-hidden bg-black text-white">
-        <img src="/admin-login-bg.svg" alt="Fachada Solar Supermercado" className="absolute inset-0 h-full w-full object-cover" />
+        <img src="/fachada%20solar.jpg" alt="Fachada Solar Supermercado" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-black/55" />
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-8">
           <div className="w-full max-w-sm rounded-3xl border border-white/20 bg-[#080808]/78 p-6 shadow-[0_25px_80px_rgba(0,0,0,0.55)] backdrop-blur-md">
