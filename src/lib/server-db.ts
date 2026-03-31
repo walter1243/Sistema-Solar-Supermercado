@@ -11,12 +11,37 @@ const defaultSettings: AdminSettings = {
   cashbackRewardValue: 0,
 };
 
-const defaultAdmin: AdminUser = {
-  username: "admin",
-  name: "Administrador Solar",
-  profileImage: "",
-  password: "123456",
-};
+const defaultAdmins: Array<{ id: number; user: AdminUser }> = [
+  {
+    id: 1,
+    user: {
+      username: "admin",
+      name: "Administrador Solar",
+      profileImage: "",
+      password: "123456",
+    },
+  },
+  {
+    id: 2,
+    user: {
+      username: "admin2",
+      name: "Administrador Solar 2",
+      profileImage: "",
+      password: "123456",
+    },
+  },
+  {
+    id: 3,
+    user: {
+      username: "admin3",
+      name: "Administrador Solar 3",
+      profileImage: "",
+      password: "123456",
+    },
+  },
+];
+
+const defaultAdmin = defaultAdmins[0].user;
 
 const seedProducts: Product[] = [
   {
@@ -49,6 +74,16 @@ let schemaReady: Promise<void> | null = null;
 
 function normalizePhone(phone: string) {
   return phone.replace(/\D/g, "");
+}
+
+function mapAdminRow(row: Record<string, unknown> | undefined): AdminUser | null {
+  if (!row) return null;
+  return {
+    username: String(row.username || defaultAdmin.username),
+    name: String(row.name || defaultAdmin.name),
+    profileImage: String(row.profile_image || ""),
+    password: String(row.password || defaultAdmin.password || "123456"),
+  };
 }
 
 async function ensureSchema() {
@@ -168,11 +203,13 @@ async function ensureSchema() {
         ON CONFLICT (id) DO NOTHING;
       `;
 
-      await sql`
-        INSERT INTO admin_users (id, username, name, profile_image, password)
-        VALUES (1, ${defaultAdmin.username}, ${defaultAdmin.name}, ${defaultAdmin.profileImage || ""}, ${defaultAdmin.password || "123456"})
-        ON CONFLICT (id) DO NOTHING;
-      `;
+      for (const admin of defaultAdmins) {
+        await sql`
+          INSERT INTO admin_users (id, username, name, profile_image, password)
+          VALUES (${admin.id}, ${admin.user.username}, ${admin.user.name}, ${admin.user.profileImage || ""}, ${admin.user.password || "123456"})
+          ON CONFLICT (id) DO NOTHING;
+        `;
+      }
 
       const { rows: productRows } = await sql`SELECT COUNT(*)::int AS count FROM products;`;
       if ((productRows[0]?.count || 0) === 0) {
@@ -229,20 +266,25 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
   return next;
 }
 
-export async function getAdminProfile(): Promise<AdminUser> {
+export async function getAdminProfile(username?: string): Promise<AdminUser> {
   await ensureSchema();
+  if (username?.trim()) {
+    const { rows } = await sql`SELECT * FROM admin_users WHERE username = ${username.trim()} LIMIT 1;`;
+    return mapAdminRow(rows[0]) || defaultAdmin;
+  }
   const { rows } = await sql`SELECT * FROM admin_users WHERE id = 1 LIMIT 1;`;
-  const data = rows[0];
-  if (!data) return defaultAdmin;
-  return {
-    username: String(data.username || defaultAdmin.username),
-    name: String(data.name || defaultAdmin.name),
-    profileImage: String(data.profile_image || ""),
-    password: String(data.password || defaultAdmin.password || "123456"),
-  };
+  return mapAdminRow(rows[0]) || defaultAdmin;
 }
 
-export async function saveAdminProfile(profile: AdminUser): Promise<AdminUser> {
+export async function getAdminProfileByUsername(username: string): Promise<AdminUser | null> {
+  await ensureSchema();
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername) return null;
+  const { rows } = await sql`SELECT * FROM admin_users WHERE username = ${normalizedUsername} LIMIT 1;`;
+  return mapAdminRow(rows[0]);
+}
+
+export async function saveAdminProfile(currentUsername: string, profile: AdminUser): Promise<AdminUser> {
   await ensureSchema();
   const next = {
     ...defaultAdmin,
@@ -254,7 +296,7 @@ export async function saveAdminProfile(profile: AdminUser): Promise<AdminUser> {
         name = ${next.name},
         profile_image = ${next.profileImage || ""},
         password = ${next.password || "123456"}
-    WHERE id = 1;
+    WHERE username = ${currentUsername};
   `;
   return next;
 }
