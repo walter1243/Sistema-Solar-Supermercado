@@ -793,14 +793,35 @@ export default function StorefrontClient() {
 
       <AnimatePresence>
         {settings.whatsappNumber ? (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-2">
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-3">
             {whatsToggleOpen ? (
-              <button type="button" onClick={openCompanyWhatsApp} className="rounded-full bg-[#25D366] px-4 py-2 text-sm font-black text-black shadow-[0_0_25px_rgba(37,211,102,0.35)]">
-                WhatsApp {settings.whatsappNumber}
-              </button>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                className="rounded-2xl border-2 border-[#25D366] bg-black/80 backdrop-blur-sm p-4 shadow-2xl"
+              >
+                <div className="mb-3 flex items-center gap-2 text-sm font-black text-[#25D366]">
+                  <MessageCircle size={16} />
+                  Mensagem Direta
+                </div>
+                <button
+                  type="button"
+                  onClick={openCompanyWhatsApp}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-black text-black hover:bg-[#20C15E] transition-colors"
+                >
+                  <MessageCircle size={18} />
+                  WhatsApp {settings.whatsappNumber}
+                </button>
+              </motion.div>
             ) : null}
-            <button type="button" onClick={() => setWhatsToggleOpen((current) => !current)} className="grid h-12 w-12 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_25px_rgba(37,211,102,0.35)]" aria-label="Alternar WhatsApp">
-              <MessageCircle size={20} />
+            <button
+              type="button"
+              onClick={() => setWhatsToggleOpen((current) => !current)}
+              className="grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
+              aria-label="Alternar WhatsApp"
+            >
+              <MessageCircle size={24} />
             </button>
           </motion.div>
         ) : null}

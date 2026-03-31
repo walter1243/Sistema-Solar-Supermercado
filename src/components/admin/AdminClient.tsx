@@ -39,8 +39,12 @@ import {
   User,
   Users,
   X,
+  CheckCircle2,
+  AlertCircle,
+  Info,
 } from "lucide-react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Tab = "dashboard" | "produtos" | "pedidos" | "entregas" | "clientes";
 
@@ -142,6 +146,15 @@ export default function AdminClient() {
       void refreshAll();
     }
   }, []);
+
+  useEffect(() => {
+    if (adminNotice) {
+      const timer = setTimeout(() => {
+        setAdminNotice(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [adminNotice]);
 
   async function refreshAll() {
     setProducts(await getProductsCatalog());
@@ -553,20 +566,6 @@ export default function AdminClient() {
 
           {menuOpen ? <div className="mb-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-3 lg:hidden">{commandButtons}</div> : null}
 
-          {adminNotice ? (
-            <div
-              className={`mb-4 rounded-xl border px-3 py-2 text-sm ${
-                adminNotice.type === "success"
-                  ? "border-[#123A24] bg-[#0B2418] text-[#9BFFD1]"
-                  : adminNotice.type === "error"
-                    ? "border-[#4A1D1D] bg-[#2A1414] text-[#FFB3B3]"
-                    : "border-[#2B3551] bg-[#141D32] text-[#B9CCFF]"
-              }`}
-            >
-              {adminNotice.text}
-            </div>
-          ) : null}
-
           <main className="space-y-4">
             {activeTab === "dashboard" && (
               <>
@@ -745,6 +744,33 @@ export default function AdminClient() {
           </main>
         </section>
       </div>
+
+      <AnimatePresence>
+        {adminNotice && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="fixed top-4 right-4 z-50 max-w-md"
+          >
+            <div
+              className={`flex items-start gap-3 rounded-xl border px-4 py-3 text-sm font-medium shadow-lg ${
+                adminNotice.type === "success"
+                  ? "border-[#22C55E] bg-[#062E0B] text-[#86EFAC]"
+                  : adminNotice.type === "error"
+                    ? "border-[#EF4444] bg-[#1F0F0F] text-[#FECACA]"
+                    : "border-[#3B82F6] bg-[#0F1C3F] text-[#93C5FD]"
+              }`}
+            >
+              {adminNotice.type === "success" && <CheckCircle2 size={18} className="mt-0.5 flex-shrink-0" />}
+              {adminNotice.type === "error" && <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />}
+              {adminNotice.type === "info" && <Info size={18} className="mt-0.5 flex-shrink-0" />}
+              <p className="flex-1">{adminNotice.text}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {profileOpen ? (
         <div className="fixed inset-0 z-50 bg-black/70 p-4" onClick={() => setProfileOpen(false)}>
