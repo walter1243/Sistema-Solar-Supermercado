@@ -98,15 +98,15 @@ export default function LandingPage() {
           backdropFilter: headerFilter,
           backgroundColor: headerBg,
         }}
-        className="sticky top-0 z-50 border-b border-transparent px-5 py-4"
+        className="sticky top-0 z-50 border-b border-transparent px-4 py-3 sm:px-5 sm:py-4"
       >
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="text-lg font-black tracking-[0.16em]">SOLAR SUPERMERCADO</div>
-          <div className="flex items-center gap-3 text-sm">
-            <Link href="/loja" className="rounded-full border border-[#1A1A1A] px-4 py-2 hover:border-[#B2FF00]">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 sm:gap-3">
+          <div className="text-sm font-black tracking-[0.12em] sm:text-lg sm:tracking-[0.16em]">SOLAR SUPERMERCADO</div>
+          <div className="flex items-center gap-2 text-xs sm:gap-3 sm:text-sm">
+            <Link href="/loja" className="rounded-full border border-[#1A1A1A] px-3 py-2 hover:border-[#B2FF00] sm:px-4">
               Link Instagram
             </Link>
-            <Link href="/admin" className="rounded-full bg-[#00AAFF] px-4 py-2 font-semibold text-black hover:bg-[#33bdff]">
+            <Link href="/admin" className="rounded-full bg-[#00AAFF] px-3 py-2 font-semibold text-black hover:bg-[#33bdff] sm:px-4">
               Painel Admin
             </Link>
           </div>
@@ -114,19 +114,19 @@ export default function LandingPage() {
       </motion.header>
 
       <main>
-        <section ref={heroRef} className="relative mx-auto grid min-h-[85vh] max-w-6xl place-items-center px-5 py-16">
+        <section ref={heroRef} className="relative mx-auto grid min-h-[72vh] max-w-6xl place-items-center px-4 py-10 sm:min-h-[85vh] sm:px-5 sm:py-16">
           <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_20%_20%,rgba(0,170,255,0.26),transparent_45%),radial-gradient(circle_at_80%_40%,rgba(178,255,0,0.22),transparent_45%)]" />
-          <motion.div style={{ scale: heroScale, opacity: heroOpacity }} className="relative w-full max-w-3xl overflow-hidden rounded-[2.4rem] border border-[#1A1A1A] bg-[#080808] p-10 shadow-[0_0_60px_rgba(0,170,255,0.16)]">
+          <motion.div style={{ scale: heroScale, opacity: heroOpacity }} className="relative w-full max-w-3xl overflow-hidden rounded-[2rem] border border-[#1A1A1A] bg-[#080808] p-6 shadow-[0_0_60px_rgba(0,170,255,0.16)] sm:rounded-[2.4rem] sm:p-10">
             <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(130deg,rgba(255,255,255,0.06),transparent_40%)]" />
-            <h1 className="text-balance text-4xl font-black leading-tight tracking-tight sm:text-6xl">
+            <h1 className="text-balance text-3xl font-black leading-tight tracking-tight sm:text-6xl">
               Carrinho Mobile
               <span className="block text-[#B2FF00]">Solar Supermercado</span>
             </h1>
-            <p className="mt-5 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
+            <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:mt-5 sm:text-base">
               Estrutura web mobile para vender pelo Instagram com painel administrativo, pedidos por API Flask,
               entrega com endereco e checkout Pix.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-2 sm:mt-8 sm:gap-3">
               <Link href="/loja" className="rounded-full bg-[#B2FF00] px-6 py-3 text-sm font-black text-black hover:bg-[#cbff4d]">
                 Abrir Loja
               </Link>
