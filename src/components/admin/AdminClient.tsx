@@ -123,6 +123,8 @@ export default function AdminClient() {
     categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
     deliveryMinimum: 150,
     pickupMinimum: 100,
+    cashbackSpendThreshold: 0,
+    cashbackRewardValue: 0,
   });
   const [productForm, setProductForm] = useState<ProductFormState>(initialProduct);
   const [newCategory, setNewCategory] = useState("");
@@ -325,6 +327,8 @@ export default function AdminClient() {
       ...settings,
       deliveryMinimum: Math.max(0, Number(settings.deliveryMinimum) || 0),
       pickupMinimum: Math.max(0, Number(settings.pickupMinimum) || 0),
+      cashbackSpendThreshold: Math.max(0, Number(settings.cashbackSpendThreshold) || 0),
+      cashbackRewardValue: Math.max(0, Number(settings.cashbackRewardValue) || 0),
     };
 
     const savedProfile = await saveAdminProfileRemote(nextProfile);
@@ -530,7 +534,11 @@ export default function AdminClient() {
         <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-8">
           <div className="w-full max-w-sm rounded-3xl border border-white/20 bg-[#080808]/78 p-6 shadow-[0_25px_80px_rgba(0,0,0,0.55)] backdrop-blur-md">
             <div className="mb-5 text-center">
-              <img src="/logo-solar-wordmark.svg" alt="Solar Supermercado" className="mx-auto h-10 w-auto" />
+              <img
+                src="/image-removebg-preview.png"
+                alt="Solar Supermercado"
+                className="mx-auto h-8 w-auto max-w-[120px] object-contain sm:h-10 sm:max-w-[150px] md:h-11 md:max-w-[180px]"
+              />
               <h1 className="mt-3 text-xl font-black tracking-tight">Painel Admin</h1>
               <p className="mt-1 text-xs text-zinc-300">Acesse para gerenciar pedidos e entregas.</p>
             </div>
@@ -895,6 +903,31 @@ export default function AdminClient() {
                   />
                 </div>
                 <p className="mt-2 text-[11px] text-zinc-500">Valores em reais (R$).</p>
+              </div>
+
+              <div className="rounded-xl border border-[#1A1A1A] bg-black/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">Politica de cashback</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={settings.cashbackSpendThreshold}
+                    onChange={(event) => setSettings((current) => ({ ...current, cashbackSpendThreshold: Number(event.target.value || 0) }))}
+                    placeholder="A cada X reais"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={settings.cashbackRewardValue}
+                    onChange={(event) => setSettings((current) => ({ ...current, cashbackRewardValue: Number(event.target.value || 0) }))}
+                    placeholder="Ganhar X cashback"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-zinc-500">Exemplo: a cada R$ 100,00 gastos, libera R$ 10,00 de cashback.</p>
               </div>
 
               <div className="rounded-xl border border-[#1A1A1A] bg-black/40 p-3">

@@ -54,6 +54,8 @@ export async function getAdminSettingsRemote(): Promise<AdminSettings> {
     categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
     deliveryMinimum: 150,
     pickupMinimum: 100,
+    cashbackSpendThreshold: 0,
+    cashbackRewardValue: 0,
   };
 }
 

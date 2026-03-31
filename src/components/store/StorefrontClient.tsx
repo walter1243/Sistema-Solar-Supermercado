@@ -106,6 +106,8 @@ export default function StorefrontClient() {
     categories: [],
     deliveryMinimum: DEFAULT_DELIVERY_MINIMUM,
     pickupMinimum: DEFAULT_PICKUP_MINIMUM,
+    cashbackSpendThreshold: 0,
+    cashbackRewardValue: 0,
   });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
@@ -494,13 +496,13 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="grid h-10 w-10 place-items-center rounded-full border border-[#1A1A1A] bg-black"
+            className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[#1A1A1A] bg-black p-0"
             aria-label="Abrir categorias"
           >
             <img
-              src="/image-removebg-preview.png"
+              src="/nova%20logo%20solar%20AMRELO.png"
               alt="Solar Supermercado"
-              className="h-6 w-6 object-contain"
+              className="block h-full w-full object-contain"
             />
           </button>
 

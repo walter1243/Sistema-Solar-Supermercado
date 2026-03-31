@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCustomerById, getOrders, saveCustomer, saveOrders } from "@/lib/server-db";
+import { getCustomerById, getOrders, getSettings, saveCustomer, saveOrders } from "@/lib/server-db";
 import { Order } from "@/types/domain";
 
 export const dynamic = "force-dynamic";
@@ -18,20 +18,32 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     ...updated,
     status: body.status || updated.status,
     paymentConfirmed: body.paymentConfirmed ?? updated.paymentConfirmed,
+    cashbackGranted: Boolean(updated.cashbackGranted),
   };
 
-  await saveOrders(orders.map((order) => (order.id === id ? nextOrder : order)));
-
-  if (nextOrder.customerId && nextOrder.status === "entregue" && nextOrder.paymentConfirmed) {
+  if (nextOrder.customerId && nextOrder.status === "entregue" && nextOrder.paymentConfirmed && !nextOrder.cashbackGranted) {
     const account = await getCustomerById(nextOrder.customerId);
     if (account) {
-      const cashback = Number((nextOrder.total * 0.02).toFixed(2));
-      await saveCustomer({
-        ...account,
-        cashbackBalance: Number((account.cashbackBalance + cashback).toFixed(2)),
-      });
+      const settings = await getSettings();
+      const threshold = Number(settings.cashbackSpendThreshold || 0);
+      const rewardValue = Number(settings.cashbackRewardValue || 0);
+
+      if (threshold > 0 && rewardValue > 0) {
+        const cycles = Math.floor(Number(nextOrder.total) / threshold);
+        const cashback = Number((cycles * rewardValue).toFixed(2));
+
+        if (cashback > 0) {
+          await saveCustomer({
+            ...account,
+            cashbackBalance: Number((account.cashbackBalance + cashback).toFixed(2)),
+          });
+          nextOrder.cashbackGranted = true;
+        }
+      }
     }
   }
+
+  await saveOrders(orders.map((order) => (order.id === id ? nextOrder : order)));
 
   return NextResponse.json({ data: nextOrder });
 }

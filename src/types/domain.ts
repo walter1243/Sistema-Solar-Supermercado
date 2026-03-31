@@ -36,6 +36,7 @@ export type Order = {
   paymentMethod: "pix" | "cartao" | "dinheiro";
   fulfillmentMethod: "entrega" | "retirada";
   paymentConfirmed?: boolean;
+  cashbackGranted?: boolean;
   customerId?: string;
   createdAt: string;
 };
@@ -46,6 +47,8 @@ export type AdminSettings = {
   categories: string[];
   deliveryMinimum: number;
   pickupMinimum: number;
+  cashbackSpendThreshold: number;
+  cashbackRewardValue: number;
 };
 
 export type AdminUser = {

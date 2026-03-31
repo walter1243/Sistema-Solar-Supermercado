@@ -7,6 +7,8 @@ const defaultSettings: AdminSettings = {
   categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
   deliveryMinimum: 150,
   pickupMinimum: 100,
+  cashbackSpendThreshold: 0,
+  cashbackRewardValue: 0,
 };
 
 const defaultAdmin: AdminUser = {
@@ -59,8 +61,20 @@ async function ensureSchema() {
           whatsapp_number TEXT NOT NULL DEFAULT '',
           categories JSONB NOT NULL,
           delivery_minimum NUMERIC NOT NULL DEFAULT 150,
-          pickup_minimum NUMERIC NOT NULL DEFAULT 100
+          pickup_minimum NUMERIC NOT NULL DEFAULT 100,
+          cashback_spend_threshold NUMERIC NOT NULL DEFAULT 0,
+          cashback_reward_value NUMERIC NOT NULL DEFAULT 0
         );
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS cashback_spend_threshold NUMERIC NOT NULL DEFAULT 0;
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS cashback_reward_value NUMERIC NOT NULL DEFAULT 0;
       `;
 
       await sql`
@@ -108,9 +122,15 @@ async function ensureSchema() {
           payment_method TEXT NOT NULL,
           fulfillment_method TEXT NOT NULL,
           payment_confirmed BOOLEAN NOT NULL DEFAULT FALSE,
+          cashback_granted BOOLEAN NOT NULL DEFAULT FALSE,
           customer_id TEXT,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+      `;
+
+      await sql`
+        ALTER TABLE orders
+        ADD COLUMN IF NOT EXISTS cashback_granted BOOLEAN NOT NULL DEFAULT FALSE;
       `;
 
       await sql`
@@ -125,8 +145,26 @@ async function ensureSchema() {
       `;
 
       await sql`
-        INSERT INTO admin_settings (id, pix_key, whatsapp_number, categories, delivery_minimum, pickup_minimum)
-        VALUES (1, ${defaultSettings.pixKey}, ${defaultSettings.whatsappNumber}, ${JSON.stringify(defaultSettings.categories)}::jsonb, ${defaultSettings.deliveryMinimum}, ${defaultSettings.pickupMinimum})
+        INSERT INTO admin_settings (
+          id,
+          pix_key,
+          whatsapp_number,
+          categories,
+          delivery_minimum,
+          pickup_minimum,
+          cashback_spend_threshold,
+          cashback_reward_value
+        )
+        VALUES (
+          1,
+          ${defaultSettings.pixKey},
+          ${defaultSettings.whatsappNumber},
+          ${JSON.stringify(defaultSettings.categories)}::jsonb,
+          ${defaultSettings.deliveryMinimum},
+          ${defaultSettings.pickupMinimum},
+          ${defaultSettings.cashbackSpendThreshold},
+          ${defaultSettings.cashbackRewardValue}
+        )
         ON CONFLICT (id) DO NOTHING;
       `;
 
@@ -161,6 +199,8 @@ export async function getSettings(): Promise<AdminSettings> {
     categories: Array.isArray(data.categories) && data.categories.length ? data.categories : defaultSettings.categories,
     deliveryMinimum: Number(data.delivery_minimum || defaultSettings.deliveryMinimum),
     pickupMinimum: Number(data.pickup_minimum || defaultSettings.pickupMinimum),
+    cashbackSpendThreshold: Number(data.cashback_spend_threshold || defaultSettings.cashbackSpendThreshold),
+    cashbackRewardValue: Number(data.cashback_reward_value || defaultSettings.cashbackRewardValue),
   };
 }
 
@@ -172,6 +212,8 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
     categories: settings.categories?.length ? settings.categories : defaultSettings.categories,
     deliveryMinimum: Number.isFinite(settings.deliveryMinimum) ? Number(settings.deliveryMinimum) : defaultSettings.deliveryMinimum,
     pickupMinimum: Number.isFinite(settings.pickupMinimum) ? Number(settings.pickupMinimum) : defaultSettings.pickupMinimum,
+    cashbackSpendThreshold: Number.isFinite(settings.cashbackSpendThreshold) ? Number(settings.cashbackSpendThreshold) : defaultSettings.cashbackSpendThreshold,
+    cashbackRewardValue: Number.isFinite(settings.cashbackRewardValue) ? Number(settings.cashbackRewardValue) : defaultSettings.cashbackRewardValue,
   };
   await sql`
     UPDATE admin_settings
@@ -179,7 +221,9 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
         whatsapp_number = ${next.whatsappNumber},
         categories = ${JSON.stringify(next.categories)}::jsonb,
         delivery_minimum = ${next.deliveryMinimum},
-        pickup_minimum = ${next.pickupMinimum}
+        pickup_minimum = ${next.pickupMinimum},
+        cashback_spend_threshold = ${next.cashbackSpendThreshold},
+        cashback_reward_value = ${next.cashbackRewardValue}
     WHERE id = 1;
   `;
   return next;
@@ -251,6 +295,7 @@ export async function getOrders(): Promise<Order[]> {
     paymentMethod: row.payment_method,
     fulfillmentMethod: row.fulfillment_method,
     paymentConfirmed: Boolean(row.payment_confirmed),
+    cashbackGranted: Boolean(row.cashback_granted),
     customerId: row.customer_id ? String(row.customer_id) : undefined,
     createdAt: new Date(row.created_at).toISOString(),
   })) as Order[];
@@ -261,7 +306,7 @@ export async function saveOrders(orders: Order[]): Promise<void> {
   await sql`DELETE FROM orders;`;
   for (const order of orders) {
     await sql`
-      INSERT INTO orders (id, items, customer_snapshot, total, status, payment_method, fulfillment_method, payment_confirmed, customer_id, created_at)
+      INSERT INTO orders (id, items, customer_snapshot, total, status, payment_method, fulfillment_method, payment_confirmed, cashback_granted, customer_id, created_at)
       VALUES (
         ${order.id},
         ${JSON.stringify(order.items)}::jsonb,
@@ -271,6 +316,7 @@ export async function saveOrders(orders: Order[]): Promise<void> {
         ${order.paymentMethod},
         ${order.fulfillmentMethod},
         ${Boolean(order.paymentConfirmed)},
+        ${Boolean(order.cashbackGranted)},
         ${order.customerId || null},
         ${order.createdAt}
       );
