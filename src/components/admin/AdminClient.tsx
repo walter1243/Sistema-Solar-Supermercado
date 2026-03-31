@@ -46,6 +46,7 @@ import {
 } from "lucide-react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { ProductUnit } from "@/types/domain";
 
 type Tab = "dashboard" | "produtos" | "pedidos" | "entregas" | "clientes";
 
@@ -54,6 +55,7 @@ type ProductFormState = {
   price: string;
   image: string;
   category: string;
+  unit: ProductUnit;
 };
 
 type UniqueCustomer = {
@@ -80,7 +82,10 @@ const initialProduct: ProductFormState = {
   price: "",
   image: "",
   category: "Mercearia",
+  unit: "und",
 };
+
+const productUnits: ProductUnit[] = ["und", "cx", "kg", "pact", "fardo"];
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -283,6 +288,7 @@ export default function AdminClient() {
       price: Number(productForm.price),
       image: productForm.image || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=640&q=80",
       category: productForm.category,
+      unit: productForm.unit,
       createdAt: new Date().toISOString(),
     };
 
@@ -712,6 +718,9 @@ export default function AdminClient() {
                     {productForm.image ? <img src={productForm.image} alt="Preview" className="h-28 w-full rounded-xl object-cover" /> : null}
                     <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                    </select>
+                    <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value as ProductUnit }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
+                      {productUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                     </select>
                     <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">Salvar Produto</button>
                   </div>

@@ -50,6 +50,7 @@ const seedProducts: Product[] = [
     price: 32.9,
     image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=640&q=80",
     category: "Mercearia",
+    unit: "und",
     createdAt: new Date().toISOString(),
   },
   {
@@ -58,6 +59,7 @@ const seedProducts: Product[] = [
     price: 9.5,
     image: "https://images.unsplash.com/photo-1592928302636-c83cf1e1a6ba?auto=format&fit=crop&w=640&q=80",
     category: "Mercearia",
+    unit: "und",
     createdAt: new Date().toISOString(),
   },
   {
@@ -66,6 +68,7 @@ const seedProducts: Product[] = [
     price: 2.99,
     image: "https://images.unsplash.com/photo-1583947582886-f40ec95dd752?auto=format&fit=crop&w=640&q=80",
     category: "Limpeza",
+    unit: "und",
     createdAt: new Date().toISOString(),
   },
 ];
@@ -130,8 +133,14 @@ async function ensureSchema() {
           price NUMERIC NOT NULL,
           image TEXT NOT NULL,
           category TEXT NOT NULL,
+          unit TEXT NOT NULL DEFAULT 'und',
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+      `;
+
+      await sql`
+        ALTER TABLE products
+        ADD COLUMN IF NOT EXISTS unit TEXT NOT NULL DEFAULT 'und';
       `;
 
       await sql`
@@ -199,6 +208,14 @@ async function ensureSchema() {
       `;
 
       await sql`
+        UPDATE orders AS o
+        SET customer_id = c.id
+        FROM customers AS c
+        WHERE o.customer_id IS NULL
+          AND regexp_replace(COALESCE(o.customer_snapshot->>'phone', ''), '[^0-9]', '', 'g') = regexp_replace(c.phone, '[^0-9]', '', 'g');
+      `;
+
+      await sql`
         INSERT INTO admin_settings (
           id,
           pix_key,
@@ -234,8 +251,8 @@ async function ensureSchema() {
       if ((productRows[0]?.count || 0) === 0) {
         for (const product of seedProducts) {
           await sql`
-            INSERT INTO products (id, name, price, image, category, created_at)
-            VALUES (${product.id}, ${product.name}, ${product.price}, ${product.image}, ${product.category}, ${product.createdAt});
+            INSERT INTO products (id, name, price, image, category, unit, created_at)
+            VALUES (${product.id}, ${product.name}, ${product.price}, ${product.image}, ${product.category}, ${product.unit}, ${product.createdAt});
           `;
         }
       }
@@ -383,6 +400,7 @@ export async function getProducts(): Promise<Product[]> {
     price: Number(row.price),
     image: String(row.image),
     category: String(row.category),
+    unit: (["und", "cx", "kg", "pact", "fardo"].includes(String(row.unit)) ? String(row.unit) : "und") as Product["unit"],
     createdAt: new Date(row.created_at).toISOString(),
   }));
 }
@@ -392,8 +410,8 @@ export async function saveProducts(products: Product[]): Promise<void> {
   await sql`DELETE FROM products;`;
   for (const product of products) {
     await sql`
-      INSERT INTO products (id, name, price, image, category, created_at)
-      VALUES (${product.id}, ${product.name}, ${product.price}, ${product.image}, ${product.category}, ${product.createdAt});
+      INSERT INTO products (id, name, price, image, category, unit, created_at)
+      VALUES (${product.id}, ${product.name}, ${product.price}, ${product.image}, ${product.category}, ${product.unit || "und"}, ${product.createdAt});
     `;
   }
 }

@@ -12,9 +12,11 @@ export async function GET() {
 export async function POST(request: Request) {
   const body = (await request.json()) as Product;
   const products = await getProducts();
+  const normalizedUnit = (["und", "cx", "kg", "pact", "fardo"].includes(String(body.unit)) ? body.unit : "und") as Product["unit"];
   const next: Product = {
     ...body,
     id: body.id || crypto.randomUUID(),
+    unit: normalizedUnit,
     createdAt: body.createdAt || new Date().toISOString(),
   };
   await saveProducts([next, ...products.filter((item) => item.id !== next.id)]);

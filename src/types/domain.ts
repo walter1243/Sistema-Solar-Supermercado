@@ -1,9 +1,12 @@
+export type ProductUnit = "und" | "cx" | "kg" | "pact" | "fardo";
+
 export type Product = {
   id: string;
   name: string;
   price: number;
   image: string;
   category: string;
+  unit: ProductUnit;
   createdAt: string;
 };
 
