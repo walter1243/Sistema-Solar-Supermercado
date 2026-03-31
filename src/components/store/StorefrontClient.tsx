@@ -500,7 +500,7 @@ export default function StorefrontClient() {
             aria-label="Abrir categorias"
           >
             <img
-              src="/nova%20logo%20solar%20AMRELO.png"
+              src="/logo-solar-amarelo.png"
               alt="Solar Supermercado"
               className="block h-full w-full object-contain"
             />
