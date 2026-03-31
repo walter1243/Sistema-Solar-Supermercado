@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminSettings, CustomerAccount, DashboardSummary, Order, Product } from "@/types/domain";
+import { AdminSettings, CustomerAccount, CustomerAlert, DashboardSummary, Order, Product } from "@/types/domain";
 import {
   getAdminSettings,
   getOrders,
@@ -241,4 +241,44 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
     productsToday: todayProducts.length,
     totalProducts: products.length,
   };
+}
+
+export async function sendCustomerAlertRemote(customerId: string, title: string, message: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/alerts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId, title, message }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export async function getCustomerAlertsRemote(customerId: string): Promise<CustomerAlert[]> {
+  try {
+    const res = await fetch(`/api/alerts?customerId=${encodeURIComponent(customerId)}`, {
+      method: "GET",
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+    const payload = (await res.json()) as { data?: CustomerAlert[] };
+    return Array.isArray(payload.data) ? payload.data : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function markCustomerAlertAsReadRemote(customerId: string, alertId: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/alerts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ customerId, alertId }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

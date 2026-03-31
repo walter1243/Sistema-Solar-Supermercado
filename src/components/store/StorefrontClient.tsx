@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  getCustomerAlertsRemote,
   getAdminSettingsRemote,
+  markCustomerAlertAsReadRemote,
   getOrdersForAdmin,
   getProductsCatalog,
   loginCustomerRemote,
@@ -34,8 +36,10 @@ import {
   Trash2,
   User,
   X,
+  Bell,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { CustomerAlert } from "@/types/domain";
 
 const profileDefault: CustomerProfile = {
   fullName: "",
@@ -123,6 +127,7 @@ export default function StorefrontClient() {
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [authError, setAuthError] = useState("");
   const [customerSession, setCustomerSession] = useState<CustomerAccount | null>(null);
+  const [customerAlerts, setCustomerAlerts] = useState<CustomerAlert[]>([]);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [loginForm, setLoginForm] = useState({ phone: "", password: "" });
   const [registerForm, setRegisterForm] = useState({
@@ -184,6 +189,40 @@ export default function StorefrontClient() {
       reference: customerSession.reference || "",
     });
   }, [customerSession]);
+
+  useEffect(() => {
+    if (!customerSession?.id) {
+      setCustomerAlerts([]);
+      return;
+    }
+
+    let canceled = false;
+
+    const loadAlerts = async () => {
+      const alerts = await getCustomerAlertsRemote(customerSession.id);
+      if (!canceled) {
+        setCustomerAlerts(alerts);
+      }
+    };
+
+    void loadAlerts();
+    const interval = window.setInterval(() => {
+      void loadAlerts();
+    }, 5000);
+
+    return () => {
+      canceled = true;
+      window.clearInterval(interval);
+    };
+  }, [customerSession?.id]);
+
+  async function handleMarkAlertAsRead(alertId: string) {
+    if (!customerSession?.id) return;
+    const ok = await markCustomerAlertAsReadRemote(customerSession.id, alertId);
+    if (!ok) return;
+    const alerts = await getCustomerAlertsRemote(customerSession.id);
+    setCustomerAlerts(alerts);
+  }
 
   const quantityMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -501,6 +540,33 @@ export default function StorefrontClient() {
             Entre na sua conta para acumular cashback ou finalize como convidado.
           </div>
         )}
+
+        {customerSession && customerAlerts.length ? (
+          <div className="mb-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <Bell size={14} className="text-[#B2FF00]" />
+              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Alertas do painel</p>
+            </div>
+            <div className="space-y-2">
+              {customerAlerts.slice(0, 3).map((alert) => (
+                <div key={alert.id} className={`rounded-xl border p-2 ${alert.readAt ? "border-[#1A1A1A] bg-black/30" : "border-[#2A5C35] bg-[#0B2418]"}`}>
+                  <p className="text-sm font-semibold">{alert.title}</p>
+                  <p className="mt-1 text-xs text-zinc-300">{alert.message}</p>
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-500">{new Date(alert.createdAt).toLocaleString("pt-BR")}</span>
+                    {!alert.readAt ? (
+                      <button type="button" onClick={() => void handleMarkAlertAsRead(alert.id)} className="rounded-lg border border-[#B2FF00] px-2 py-1 text-[10px] font-semibold text-[#B2FF00]">
+                        Marcar como lido
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-zinc-500">Lido</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {latestTrackedOrder ? (
           <div className="mb-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-3">

@@ -53,6 +53,14 @@ export type AdminUser = {
   password?: string;
 };
 
+export type CustomerAlert = {
+  id: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  readAt?: string;
+};
+
 export type CustomerAccount = {
   id: string;
   fullName: string;
@@ -63,6 +71,7 @@ export type CustomerAccount = {
   number?: string;
   reference?: string;
   cashbackBalance: number;
+  alerts?: CustomerAlert[];
 };
 
 export type DashboardSummary = {

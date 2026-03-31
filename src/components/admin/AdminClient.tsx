@@ -9,6 +9,7 @@ import {
   getOrdersForAdmin,
   getProductsCatalog,
   saveAdminSettingsRemote,
+  sendCustomerAlertRemote,
   updateOrderStatusRemote,
 } from "@/lib/api";
 import {
@@ -63,6 +64,7 @@ type UniqueCustomer = {
   totalOrders: number;
   totalSpent: number;
   lastOrderDate: string;
+  customerId?: string;
 };
 
 const tabs: Array<{ id: Tab; label: string; icon: ComponentType<{ size?: number }> }> = [
@@ -127,6 +129,7 @@ export default function AdminClient() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({ name: "", username: "", password: "", profileImage: "" });
   const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
+  const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
 
   useEffect(() => {
     const session = getAdminSession();
@@ -190,6 +193,7 @@ export default function AdminClient() {
         existing.totalSpent += order.total;
         if (new Date(order.createdAt) > new Date(existing.lastOrderDate)) {
           existing.lastOrderDate = order.createdAt;
+          existing.customerId = order.customerId || existing.customerId;
         }
       } else {
         customerMap.set(key, {
@@ -200,6 +204,7 @@ export default function AdminClient() {
           totalOrders: 1,
           totalSpent: order.total,
           lastOrderDate: order.createdAt,
+          customerId: order.customerId,
         });
       }
     });
@@ -208,6 +213,15 @@ export default function AdminClient() {
       new Date(b.lastOrderDate).getTime() - new Date(a.lastOrderDate).getTime()
     );
   }, [orders]);
+
+  useEffect(() => {
+    if (!customerAlertForm.customerId && uniqueCustomers.length) {
+      const firstWithAccount = uniqueCustomers.find((customer) => customer.customerId)?.customerId || "";
+      if (firstWithAccount) {
+        setCustomerAlertForm((current) => ({ ...current, customerId: firstWithAccount }));
+      }
+    }
+  }, [customerAlertForm.customerId, uniqueCustomers]);
 
   function handleLogin(event: React.FormEvent) {
     event.preventDefault();
@@ -448,6 +462,34 @@ export default function AdminClient() {
     // Download
     doc.save(`clientes-solarmercado-${new Date().toISOString().split("T")[0]}.pdf`);
     setAdminNotice({ type: "success", text: `PDF gerado com ${uniqueCustomers.length} cliente(s).` });
+  }
+
+  async function handleSendCustomerAlert(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!customerAlertForm.customerId) {
+      setAdminNotice({ type: "error", text: "Selecione um cliente com conta cadastrada." });
+      return;
+    }
+
+    if (!customerAlertForm.title.trim() || !customerAlertForm.message.trim()) {
+      setAdminNotice({ type: "error", text: "Preencha titulo e mensagem do alerta." });
+      return;
+    }
+
+    const sent = await sendCustomerAlertRemote(
+      customerAlertForm.customerId,
+      customerAlertForm.title,
+      customerAlertForm.message,
+    );
+
+    if (!sent) {
+      setAdminNotice({ type: "error", text: "Nao foi possivel enviar o alerta no servidor da Vercel." });
+      return;
+    }
+
+    setAdminNotice({ type: "success", text: "Alerta enviado para o cliente com sucesso." });
+    setCustomerAlertForm((current) => ({ ...current, title: "", message: "" }));
   }
 
   const commandButtons = (
@@ -706,6 +748,39 @@ export default function AdminClient() {
                     <Download size={16} /> Exportar PDF
                   </button>
                 </div>
+
+                <form onSubmit={handleSendCustomerAlert} className="mb-4 rounded-2xl border border-[#1A1A1A] bg-black/40 p-3">
+                  <p className="text-sm font-semibold">Enviar alerta para cliente</p>
+                  <p className="mt-1 text-xs text-zinc-500">Somente clientes com conta cadastrada recebem alerta no app.</p>
+                  <div className="mt-3 grid gap-2">
+                    <select
+                      value={customerAlertForm.customerId}
+                      onChange={(event) => setCustomerAlertForm((current) => ({ ...current, customerId: event.target.value }))}
+                      className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                    >
+                      <option value="">Selecione o cliente</option>
+                      {uniqueCustomers.map((customer) => (
+                        <option key={`${customer.phone}-${customer.customerId || "guest"}`} value={customer.customerId || ""} disabled={!customer.customerId}>
+                          {customer.fullName} - {customer.phone} {!customer.customerId ? "(sem conta)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      value={customerAlertForm.title}
+                      onChange={(event) => setCustomerAlertForm((current) => ({ ...current, title: event.target.value }))}
+                      placeholder="Titulo do alerta"
+                      className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                    />
+                    <textarea
+                      value={customerAlertForm.message}
+                      onChange={(event) => setCustomerAlertForm((current) => ({ ...current, message: event.target.value }))}
+                      placeholder="Mensagem para o cliente"
+                      rows={3}
+                      className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                    />
+                    <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black">Enviar alerta</button>
+                  </div>
+                </form>
 
                 {uniqueCustomers.length === 0 ? (
                   <p className="text-sm text-zinc-500">Nenhum cliente cadastrado ainda.</p>
