@@ -845,13 +845,13 @@ export default function AdminClient() {
             )}
 
             {activeTab === "clientes" && (
-              <section className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
-                <div className="mb-4 flex items-center justify-between">
+              <section className="overflow-hidden rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 className="text-lg font-bold">Cadastro de Clientes</h2>
                     <p className="mt-1 text-xs text-zinc-400">Total de {uniqueCustomers.length} cliente(s) com pedidos</p>
                   </div>
-                  <button type="button" onClick={exportCustomersToPDF} className="flex items-center gap-2 rounded-xl bg-[#00AAFF] px-4 py-2 text-sm font-black text-black">
+                  <button type="button" onClick={exportCustomersToPDF} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#00AAFF] px-4 py-2 text-sm font-black text-black sm:w-auto">
                     <Download size={16} /> Exportar PDF
                   </button>
                 </div>
@@ -885,14 +885,33 @@ export default function AdminClient() {
                       rows={3}
                       className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                     />
-                    <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black">Enviar alerta</button>
+                    <button type="submit" className="w-full rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black">Enviar alerta</button>
                   </div>
                 </form>
 
                 {uniqueCustomers.length === 0 ? (
                   <p className="text-sm text-zinc-500">Nenhum cliente cadastrado ainda.</p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <>
+                    <div className="grid gap-2 md:hidden">
+                      {uniqueCustomers.map((customer, index) => (
+                        <article key={`${customer.phone}-${index}`} className="rounded-xl border border-[#1A1A1A] bg-black/30 p-3 text-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className="font-semibold text-white">{customer.fullName}</p>
+                            <span className="rounded-full border border-[#1A1A1A] px-2 py-0.5 text-[11px] text-[#B2FF00]">{customer.totalOrders} pedido(s)</span>
+                          </div>
+                          <p className="mt-1 text-zinc-400">{customer.phone}</p>
+                          <p className="text-zinc-400">CPF: {customer.cpf || "-"}</p>
+                          <p className="mt-1 text-zinc-400">{customer.address}</p>
+                          <div className="mt-2 flex items-center justify-between text-xs">
+                            <span className="text-zinc-500">Ultimo: {new Date(customer.lastOrderDate).toLocaleDateString("pt-BR")}</span>
+                            <span className="font-semibold text-[#B2FF00]">{formatCurrency(customer.totalSpent)}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+
+                    <div className="hidden overflow-x-auto md:block">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[#1A1A1A]">
@@ -919,7 +938,8 @@ export default function AdminClient() {
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                    </div>
+                  </>
                 )}
               </section>
             )}
