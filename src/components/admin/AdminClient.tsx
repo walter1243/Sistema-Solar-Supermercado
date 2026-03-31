@@ -108,6 +108,7 @@ export default function AdminClient() {
   const [newCategory, setNewCategory] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({ name: "", username: "", password: "", profileImage: "" });
+  const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
 
   useEffect(() => {
     const session = getAdminSession();
@@ -159,6 +160,7 @@ export default function AdminClient() {
     }
     setAdminUser(user);
     setAuthError("");
+    setAdminNotice({ type: "success", text: "Login realizado com sucesso. Bem-vindo ao painel." });
     setAuthForm((current) => ({ ...current, password: "" }));
     void refreshAll();
   }
@@ -183,6 +185,7 @@ export default function AdminClient() {
     };
 
     await createProduct(product);
+    setAdminNotice({ type: "success", text: "Produto cadastrado com sucesso e disponivel na loja." });
     setProductForm({ ...initialProduct, category: settings.categories[0] || "Mercearia" });
     void refreshAll();
   }
@@ -194,12 +197,47 @@ export default function AdminClient() {
     setSettings(next);
     saveAdminSettings(next);
     setNewCategory("");
+    setAdminNotice({ type: "info", text: `Categoria ${trimmed} adicionada.` });
+  }
+
+  async function handleDeleteCategory(categoryToDelete: string) {
+    if (settings.categories.length <= 1) {
+      setAdminNotice({ type: "error", text: "Mantenha pelo menos uma categoria cadastrada." });
+      return;
+    }
+
+    const confirmed = window.confirm(`Tem certeza que deseja excluir a categoria \"${categoryToDelete}\"?`);
+    if (!confirmed) return;
+
+    const filteredCategories = settings.categories.filter((category) => category !== categoryToDelete);
+    const nextSettings = {
+      ...settings,
+      categories: filteredCategories,
+    };
+
+    setSettings(nextSettings);
+    saveAdminSettings(nextSettings);
+    setProductForm((current) => ({
+      ...current,
+      category: current.category === categoryToDelete ? filteredCategories[0] || "Mercearia" : current.category,
+    }));
+
+    try {
+      const saved = await saveAdminSettingsRemote(nextSettings);
+      saveAdminSettings(saved);
+      setSettings(saved);
+    } catch {
+      // Keep local state when remote settings update is unavailable.
+    }
+
+    setAdminNotice({ type: "success", text: `Categoria ${categoryToDelete} excluida com sucesso.` });
   }
 
   async function handleSaveSettings() {
     const nextSettings = await saveAdminSettingsRemote(settings);
     saveAdminSettings(nextSettings);
     setSettings(nextSettings);
+    setAdminNotice({ type: "success", text: "Configuracoes salvas com sucesso." });
     void refreshAll();
   }
 
@@ -212,6 +250,7 @@ export default function AdminClient() {
     };
     saveAdminProfile(nextProfile);
     setAdminUser(nextProfile);
+    setAdminNotice({ type: "success", text: "Perfil do administrador atualizado." });
     setProfileOpen(false);
   }
 
@@ -219,6 +258,7 @@ export default function AdminClient() {
     const selected = orders.find((order) => order.id === orderId);
     await updateOrderStatusRemote(orderId, status, selected?.paymentConfirmed ?? false);
     updateOrderStatus(orderId, status, selected?.paymentConfirmed ?? false);
+    setAdminNotice({ type: "success", text: `Status do pedido #${orderId.slice(0, 8)} atualizado para ${status}.` });
     void refreshAll();
   }
 
@@ -226,12 +266,17 @@ export default function AdminClient() {
     const selected = orders.find((order) => order.id === orderId);
     await updateOrderStatusRemote(orderId, selected?.status || "novo", confirmed);
     updateOrderStatus(orderId, selected?.status || "novo", confirmed);
+    setAdminNotice({ type: "success", text: confirmed ? `Pagamento do pedido #${orderId.slice(0, 8)} confirmado.` : `Pagamento do pedido #${orderId.slice(0, 8)} marcado como pendente.` });
     void refreshAll();
   }
 
   function sendOrderToWhatsApp(order: Order) {
     const whatsapp = settings.whatsappNumber.replace(/\D/g, "");
-    if (!whatsapp) return;
+    if (!whatsapp) {
+      setAdminNotice({ type: "error", text: "Defina o numero de WhatsApp da empresa nas configuracoes." });
+      return;
+    }
+    setAdminNotice({ type: "info", text: `Abrindo WhatsApp para enviar o pedido #${order.id.slice(0, 8)}.` });
     window.open(`https://wa.me/55${whatsapp}?text=${buildWhatsAppMessage(order)}`, "_blank", "noopener,noreferrer");
   }
 
@@ -364,6 +409,20 @@ export default function AdminClient() {
 
           {menuOpen ? <div className="mb-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-3 lg:hidden">{commandButtons}</div> : null}
 
+          {adminNotice ? (
+            <div
+              className={`mb-4 rounded-xl border px-3 py-2 text-sm ${
+                adminNotice.type === "success"
+                  ? "border-[#123A24] bg-[#0B2418] text-[#9BFFD1]"
+                  : adminNotice.type === "error"
+                    ? "border-[#4A1D1D] bg-[#2A1414] text-[#FFB3B3]"
+                    : "border-[#2B3551] bg-[#141D32] text-[#B9CCFF]"
+              }`}
+            >
+              {adminNotice.text}
+            </div>
+          ) : null}
+
           <main className="space-y-4">
             {activeTab === "dashboard" && (
               <>
@@ -400,7 +459,22 @@ export default function AdminClient() {
                       <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Nova categoria" className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
                       <button type="button" onClick={handleAddCategory} className="rounded-xl bg-[#00AAFF] px-4 py-2 text-sm font-black text-black">Adicionar</button>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-2">{settings.categories.map((category) => <span key={category} className="rounded-full border border-[#1A1A1A] px-3 py-1 text-xs text-zinc-300">{category}</span>)}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {settings.categories.map((category) => (
+                        <div key={category} className="inline-flex items-center gap-2 rounded-full border border-[#1A1A1A] px-3 py-1 text-xs text-zinc-300">
+                          <span>{category}</span>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteCategory(category)}
+                            className="grid h-4 w-4 place-items-center rounded-full border border-zinc-600 text-[10px] text-zinc-300 hover:border-red-400 hover:text-red-300"
+                            aria-label={`Excluir categoria ${category}`}
+                            title={`Excluir categoria ${category}`}
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
                     <h2 className="text-lg font-bold">Chave Pix e WhatsApp</h2>

@@ -793,10 +793,10 @@ export default function StorefrontClient() {
 
       <AnimatePresence>
         {settings.whatsappNumber ? (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-24 left-4 z-30 flex flex-col items-start gap-2">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-2">
             {whatsToggleOpen ? (
               <button type="button" onClick={openCompanyWhatsApp} className="rounded-full bg-[#25D366] px-4 py-2 text-sm font-black text-black shadow-[0_0_25px_rgba(37,211,102,0.35)]">
-                Falar no WhatsApp
+                WhatsApp {settings.whatsappNumber}
               </button>
             ) : null}
             <button type="button" onClick={() => setWhatsToggleOpen((current) => !current)} className="grid h-12 w-12 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_25px_rgba(37,211,102,0.35)]" aria-label="Alternar WhatsApp">

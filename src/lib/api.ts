@@ -67,6 +67,15 @@ function settingsPaths() {
   return ["/settings", "/admin/settings", "/api/settings", "/api/admin/settings"];
 }
 
+function mergeAdminSettings(base: AdminSettings, incoming?: Partial<AdminSettings> | null): AdminSettings {
+  if (!incoming) return base;
+  return {
+    pixKey: incoming.pixKey?.trim() ? incoming.pixKey : base.pixKey,
+    whatsappNumber: incoming.whatsappNumber?.trim() ? incoming.whatsappNumber : base.whatsappNumber,
+    categories: incoming.categories?.length ? incoming.categories : base.categories,
+  };
+}
+
 function customerRegisterPaths() {
   return ["/customers/register", "/auth/customers/register", "/api/customers/register", "/api/auth/customers/register"];
 }
@@ -101,12 +110,14 @@ export async function createProduct(product: Product): Promise<Product> {
 }
 
 export async function getAdminSettingsRemote(): Promise<AdminSettings> {
+  const local = getAdminSettings();
   const remote = unwrapData<AdminSettings>(await safeFetch<unknown>(settingsPaths(), { method: "GET" }));
   if (remote) {
-    saveAdminSettings(remote);
-    return { ...getAdminSettings(), ...remote };
+    const merged = mergeAdminSettings(local, remote);
+    saveAdminSettings(merged);
+    return merged;
   }
-  return getAdminSettings();
+  return local;
 }
 
 export async function saveAdminSettingsRemote(settings: AdminSettings): Promise<AdminSettings> {
@@ -116,7 +127,7 @@ export async function saveAdminSettingsRemote(settings: AdminSettings): Promise<
       body: JSON.stringify(settings),
     }),
   );
-  const nextSettings = remote ? { ...settings, ...remote } : settings;
+  const nextSettings = mergeAdminSettings(settings, remote);
   saveAdminSettings(nextSettings);
   return nextSettings;
 }
