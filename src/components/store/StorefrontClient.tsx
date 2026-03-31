@@ -132,6 +132,7 @@ export default function StorefrontClient() {
   const [authError, setAuthError] = useState("");
   const [customerSession, setCustomerSession] = useState<CustomerAccount | null>(null);
   const [customerAlerts, setCustomerAlerts] = useState<CustomerAlert[]>([]);
+  const [whatsAppDraftMessage, setWhatsAppDraftMessage] = useState("");
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastPixOrder, setLastPixOrder] = useState<Order | null>(null);
   const [pixFlowOpen, setPixFlowOpen] = useState(false);
@@ -223,10 +224,21 @@ export default function StorefrontClient() {
 
   async function handleMarkAlertAsRead(alertId: string) {
     if (!customerSession?.id) return;
+    const selectedAlert = customerAlerts.find((alert) => alert.id === alertId);
     const ok = await markCustomerAlertAsReadRemote(customerSession.id, alertId);
     if (!ok) return;
     const alerts = await getCustomerAlertsRemote(customerSession.id);
     setCustomerAlerts(alerts);
+
+    if (selectedAlert) {
+      const draft = [
+        `Olá, sou ${customerSession.fullName}.`,
+        "Vi o alerta no app e gostaria de falar com o administrador.",
+        `Assunto: ${selectedAlert.title}`,
+        selectedAlert.message,
+      ].join("\n");
+      setWhatsAppDraftMessage(draft);
+    }
   }
 
   const quantityMap = useMemo(() => {
@@ -356,7 +368,8 @@ export default function StorefrontClient() {
     const phone = settings.whatsappNumber.replace(/\D/g, "");
     if (!phone) return;
     const waPhone = phone.startsWith("55") ? phone : `55${phone}`;
-    window.open(`https://wa.me/${waPhone}`, "_blank", "noopener,noreferrer");
+    const suffix = whatsAppDraftMessage ? `?text=${encodeURIComponent(whatsAppDraftMessage)}` : "";
+    window.open(`https://wa.me/${waPhone}${suffix}`, "_blank", "noopener,noreferrer");
   }
 
   function openPixProofWhatsApp(order: Order) {
@@ -668,6 +681,9 @@ export default function StorefrontClient() {
                 </div>
               ))}
             </div>
+            {whatsAppDraftMessage ? (
+              <p className="mt-2 text-[11px] text-[#9BFFD1]">Mensagem pronta para WhatsApp. Toque no icone verde para falar com o administrador.</p>
+            ) : null}
           </div>
         ) : null}
 
