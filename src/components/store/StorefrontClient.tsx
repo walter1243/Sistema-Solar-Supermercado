@@ -492,10 +492,11 @@ export default function StorefrontClient() {
       <header className="sticky top-0 z-30 border-b border-[#1A1A1A] bg-black/85 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-md items-center gap-2">
           <button type="button" onClick={() => setCategorySidebarOpen(true)} className="flex items-center gap-2" aria-label="Abrir categorias">
-            <img src="/image-removebg-preview.png" alt="Solar Supermercado" className="h-10 w-10 object-contain" />
-            <div className="hidden sm:block">
-              <img src="/logo-solar-wordmark.svg" alt="Solar Supermercado" className="h-8 w-auto" />
-            </div>
+            <img
+              src="/image-removebg-preview.png"
+              alt="Solar Supermercado"
+              className="h-8 w-auto max-w-[110px] object-contain sm:h-10 sm:max-w-[150px] md:h-11 md:max-w-[180px]"
+            />
           </button>
 
           <div className="relative flex-1">
