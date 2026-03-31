@@ -101,7 +101,7 @@ export default function LandingPage() {
         className="sticky top-0 z-50 border-b border-transparent px-5 py-4"
       >
         <div className="mx-auto flex max-w-6xl items-center justify-between">
-          <div className="text-lg font-black tracking-[0.16em]">SOLAR MARKET</div>
+          <div className="text-lg font-black tracking-[0.16em]">SOLAR SUPERMERCADO</div>
           <div className="flex items-center gap-3 text-sm">
             <Link href="/loja" className="rounded-full border border-[#1A1A1A] px-4 py-2 hover:border-[#B2FF00]">
               Link Instagram
