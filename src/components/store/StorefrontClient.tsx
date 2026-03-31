@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  clearCustomerSessionRemote,
+  getCustomerSessionRemote,
   getCustomerAlertsRemote,
   getAdminSettingsRemote,
   markCustomerAlertAsReadRemote,
@@ -11,15 +13,6 @@ import {
   registerCustomerRemote,
   updateCustomerAccountRemote,
 } from "@/lib/api";
-import {
-  addOrder,
-  clearCustomerSession,
-  getCustomerSession,
-  loginCustomer,
-  registerCustomer,
-  saveCustomerSession,
-  updateCustomerAccount,
-} from "@/lib/storage";
 import { AdminSettings, CartItem, CustomerAccount, CustomerProfile, Order, Product } from "@/types/domain";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -56,7 +49,8 @@ type CategoryFilter = "todos" | "carnes" | "bebidas" | "hortfruit";
 
 type PaymentMethod = Order["paymentMethod"];
 type FulfillmentMethod = Order["fulfillmentMethod"];
-const DELIVERY_MINIMUM = 150;
+const DEFAULT_DELIVERY_MINIMUM = 150;
+const DEFAULT_PICKUP_MINIMUM = 100;
 
 const displayCategories: Array<{ key: Exclude<CategoryFilter, "todos">; label: string }> = [
   { key: "carnes", label: "Carnes" },
@@ -106,7 +100,13 @@ function getSectionName(rawCategory: string) {
 export default function StorefrontClient() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [settings, setSettings] = useState<AdminSettings>({ pixKey: "", whatsappNumber: "", categories: [] });
+  const [settings, setSettings] = useState<AdminSettings>({
+    pixKey: "",
+    whatsappNumber: "",
+    categories: [],
+    deliveryMinimum: DEFAULT_DELIVERY_MINIMUM,
+    pickupMinimum: DEFAULT_PICKUP_MINIMUM,
+  });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
@@ -120,7 +120,6 @@ export default function StorefrontClient() {
   const [copyDone, setCopyDone] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pix");
   const [fulfillmentMethod, setFulfillmentMethod] = useState<FulfillmentMethod>("entrega");
-  const [whatsToggleOpen, setWhatsToggleOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "cadastro">("login");
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -141,25 +140,23 @@ export default function StorefrontClient() {
   });
 
   useEffect(() => {
-    const session = getCustomerSession();
-    setCustomerSession(session);
-    if (session) {
-      setProfile({
-        fullName: session.fullName,
-        cpf: session.cpf,
-        phone: session.phone,
-        address: "",
-        street: session.street || "",
-        number: session.number || "",
-        reference: session.reference || "",
-      });
-    }
-
     const loadRemoteState = async () => {
+      const session = await getCustomerSessionRemote();
+      setCustomerSession(session);
+      if (session) {
+        setProfile({
+          fullName: session.fullName,
+          cpf: session.cpf,
+          phone: session.phone,
+          address: "",
+          street: session.street || "",
+          number: session.number || "",
+          reference: session.reference || "",
+        });
+      }
       setProducts(await getProductsCatalog());
       setSettings(await getAdminSettingsRemote());
       setOrders(await getOrdersForAdmin());
-      setCustomerSession(getCustomerSession());
     };
 
     void loadRemoteState();
@@ -168,11 +165,9 @@ export default function StorefrontClient() {
       void loadRemoteState();
     };
 
-    window.addEventListener("storage", syncOrders);
     const intervalId = window.setInterval(syncOrders, 2500);
 
     return () => {
-      window.removeEventListener("storage", syncOrders);
       window.clearInterval(intervalId);
     };
   }, []);
@@ -240,8 +235,12 @@ export default function StorefrontClient() {
     }, 0);
   }, [cart, products]);
 
-  const isDeliveryUnlocked = total >= DELIVERY_MINIMUM;
-  const missingForDelivery = Math.max(0, DELIVERY_MINIMUM - total);
+  const deliveryMinimum = Number.isFinite(settings.deliveryMinimum) ? Number(settings.deliveryMinimum) : DEFAULT_DELIVERY_MINIMUM;
+  const pickupMinimum = Number.isFinite(settings.pickupMinimum) ? Number(settings.pickupMinimum) : DEFAULT_PICKUP_MINIMUM;
+  const isDeliveryUnlocked = total >= deliveryMinimum;
+  const missingForDelivery = Math.max(0, deliveryMinimum - total);
+  const isPickupUnlocked = total >= pickupMinimum;
+  const missingForPickup = Math.max(0, pickupMinimum - total);
 
   useEffect(() => {
     if (!isDeliveryUnlocked && fulfillmentMethod === "entrega") {
@@ -330,7 +329,7 @@ export default function StorefrontClient() {
 
   const canAdvanceToAddress = cart.length > 0;
   const canAdvanceToDelivery = Boolean(profile.fullName.trim() && profile.phone.trim());
-  const canAdvanceToReview = fulfillmentMethod === "retirada" ? true : isDeliveryUnlocked && Boolean(profile.street?.trim());
+  const canAdvanceToReview = fulfillmentMethod === "retirada" ? isPickupUnlocked : isDeliveryUnlocked && Boolean(profile.street?.trim());
 
   async function copyPixKey() {
     if (!settings.pixKey) return;
@@ -346,7 +345,8 @@ export default function StorefrontClient() {
   function openCompanyWhatsApp() {
     const phone = settings.whatsappNumber.replace(/\D/g, "");
     if (!phone) return;
-    window.open(`https://wa.me/55${phone}`, "_blank", "noopener,noreferrer");
+    const waPhone = phone.startsWith("55") ? phone : `55${phone}`;
+    window.open(`https://wa.me/${waPhone}`, "_blank", "noopener,noreferrer");
   }
 
   async function submitOrder() {
@@ -364,7 +364,12 @@ export default function StorefrontClient() {
     }
 
     if (fulfillmentMethod === "entrega" && !isDeliveryUnlocked) {
-      setCheckoutError(`Entrega disponivel somente para pedidos a partir de ${formatCurrency(DELIVERY_MINIMUM)}.`);
+      setCheckoutError(`Entrega disponivel somente para pedidos a partir de ${formatCurrency(deliveryMinimum)}.`);
+      return;
+    }
+
+    if (fulfillmentMethod === "retirada" && !isPickupUnlocked) {
+      setCheckoutError(`Retirada disponivel somente para pedidos a partir de ${formatCurrency(pickupMinimum)}.`);
       return;
     }
 
@@ -397,7 +402,6 @@ export default function StorefrontClient() {
       createdAt: new Date().toISOString(),
     };
 
-    addOrder(order);
     await postOrder(order);
 
     if (customerSession) {
@@ -411,8 +415,6 @@ export default function StorefrontClient() {
         reference: profile.reference,
       };
       const syncedAccount = await updateCustomerAccountRemote(updatedAccount);
-      saveCustomerSession(syncedAccount);
-      updateCustomerAccount(syncedAccount);
       setCustomerSession(syncedAccount);
     }
 
@@ -433,7 +435,7 @@ export default function StorefrontClient() {
 
   async function handleCustomerLogin(event: React.FormEvent) {
     event.preventDefault();
-    const account = (await loginCustomerRemote(loginForm.phone, loginForm.password)) || loginCustomer(loginForm.phone, loginForm.password);
+    const account = await loginCustomerRemote(loginForm.phone, loginForm.password);
     if (!account) {
       setAuthError("Telefone ou senha invalidos.");
       return;
@@ -464,7 +466,6 @@ export default function StorefrontClient() {
     };
 
     const savedAccount = await registerCustomerRemote(account);
-    registerCustomer(savedAccount);
     setCustomerSession(savedAccount);
     setProfile({
       fullName: savedAccount.fullName,
@@ -481,7 +482,7 @@ export default function StorefrontClient() {
   }
 
   function handleCustomerLogout() {
-    clearCustomerSession();
+    void clearCustomerSessionRemote();
     setCustomerSession(null);
     setAuthError("");
   }
@@ -707,7 +708,7 @@ export default function StorefrontClient() {
                   <div className={`mb-2 rounded-xl border px-3 py-2 text-xs ${isDeliveryUnlocked ? "border-[#123A24] bg-[#0B2418] text-[#9BFFD1]" : "border-[#3B2A00] bg-[#2A1E00] text-[#FFD98A]"}`}>
                     {isDeliveryUnlocked
                       ? `Entrega desbloqueada para este pedido.`
-                      : `Faltam ${formatCurrency(missingForDelivery)} para liberar entrega (minimo ${formatCurrency(DELIVERY_MINIMUM)}).`}
+                      : `Faltam ${formatCurrency(missingForDelivery)} para liberar entrega (minimo ${formatCurrency(deliveryMinimum)}).`}
                   </div>
                   <div className="max-h-48 overflow-auto">
                     {cart.length === 0 ? <p className="text-sm text-zinc-500">Nenhum item selecionado.</p> : cart.map((item) => {
@@ -764,7 +765,7 @@ export default function StorefrontClient() {
                   <p className="text-xs text-zinc-400">Entrega e pagamento</p>
                   {!isDeliveryUnlocked ? (
                     <div className="mt-2 rounded-xl border border-[#3B2A00] bg-[#2A1E00] px-3 py-2 text-xs text-[#FFD98A]">
-                      Entrega desbloqueia em {formatCurrency(DELIVERY_MINIMUM)}. Faltam {formatCurrency(missingForDelivery)} no carrinho.
+                      Entrega desbloqueia em {formatCurrency(deliveryMinimum)}. Faltam {formatCurrency(missingForDelivery)} no carrinho.
                     </div>
                   ) : (
                     <div className="mt-2 rounded-xl border border-[#123A24] bg-[#0B2418] px-3 py-2 text-xs text-[#9BFFD1]">
@@ -777,7 +778,7 @@ export default function StorefrontClient() {
                       disabled={!isDeliveryUnlocked}
                       onClick={() => {
                         if (!isDeliveryUnlocked) {
-                          setCheckoutError(`Entrega disponivel somente para pedidos a partir de ${formatCurrency(DELIVERY_MINIMUM)}.`);
+                          setCheckoutError(`Entrega disponivel somente para pedidos a partir de ${formatCurrency(deliveryMinimum)}.`);
                           return;
                         }
                         setCheckoutError("");
@@ -785,7 +786,7 @@ export default function StorefrontClient() {
                       }}
                       className={`rounded-xl border px-3 py-2 text-sm font-semibold ${fulfillmentMethod === "entrega" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A]"} ${!isDeliveryUnlocked ? "cursor-not-allowed opacity-40" : ""}`}
                     >
-                      Entrega (min {formatCurrency(DELIVERY_MINIMUM)})
+                      Entrega (min {formatCurrency(deliveryMinimum)})
                     </button>
                     <button type="button" onClick={() => setFulfillmentMethod("retirada")} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${fulfillmentMethod === "retirada" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A]"}`}>Retirada</button>
                   </div>
@@ -797,7 +798,14 @@ export default function StorefrontClient() {
                       <input placeholder="Ponto de referencia" value={profile.reference || ""} onChange={(event) => setProfile((current) => ({ ...current, reference: event.target.value }))} className="mt-2 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
                     </div>
                   ) : (
-                    <div className="mt-3 rounded-xl border border-[#1A1A1A] bg-[#080808] p-3 text-sm text-zinc-400">O pedido sera separado para retirada no mercado.</div>
+                    <div className="mt-3 rounded-xl border border-[#1A1A1A] bg-[#080808] p-3 text-sm text-zinc-400">
+                      O pedido sera separado para retirada no mercado.
+                      {!isPickupUnlocked ? (
+                        <p className="mt-2 text-xs text-[#FFD98A]">Faltam {formatCurrency(missingForPickup)} para atingir o minimo de retirada ({formatCurrency(pickupMinimum)}).</p>
+                      ) : (
+                        <p className="mt-2 text-xs text-[#9BFFD1]">Retirada liberada para este pedido.</p>
+                      )}
+                    </div>
                   )}
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setPaymentMethod("pix")} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${paymentMethod === "pix" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A]"}`}>Pix</button>
@@ -811,6 +819,10 @@ export default function StorefrontClient() {
                       disabled={!canAdvanceToReview}
                       onClick={() => {
                         if (!canAdvanceToReview) {
+                          if (fulfillmentMethod === "retirada") {
+                            setCheckoutError(`Retirada disponivel somente para pedidos a partir de ${formatCurrency(pickupMinimum)}.`);
+                            return;
+                          }
                           setCheckoutError("Preencha a rua para entrega.");
                           return;
                         }
@@ -858,38 +870,18 @@ export default function StorefrontClient() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {settings.whatsappNumber ? (
-          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="fixed bottom-24 right-4 z-30 flex flex-col items-end gap-3">
-            {whatsToggleOpen ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                className="rounded-2xl border-2 border-[#25D366] bg-black/80 backdrop-blur-sm p-4 shadow-2xl"
-              >
-                <div className="mb-3 flex items-center gap-2 text-sm font-black text-[#25D366]">
-                  <MessageCircle size={16} />
-                  Mensagem Direta
-                </div>
-                <button
-                  type="button"
-                  onClick={openCompanyWhatsApp}
-                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] px-4 py-3 text-sm font-black text-black hover:bg-[#20C15E] transition-colors"
-                >
-                  <MessageCircle size={18} />
-                  WhatsApp {settings.whatsappNumber}
-                </button>
-              </motion.div>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => setWhatsToggleOpen((current) => !current)}
-              className="grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
-              aria-label="Alternar WhatsApp"
-            >
-              <MessageCircle size={24} />
-            </button>
-          </motion.div>
+        {Boolean(settings.whatsappNumber.replace(/\D/g, "")) ? (
+          <motion.button
+            type="button"
+            onClick={openCompanyWhatsApp}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            className="fixed bottom-24 right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
+            aria-label="Abrir WhatsApp"
+          >
+            <MessageCircle size={24} />
+          </motion.button>
         ) : null}
       </AnimatePresence>
 

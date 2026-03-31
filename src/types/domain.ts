@@ -44,6 +44,8 @@ export type AdminSettings = {
   pixKey: string;
   whatsappNumber: string;
   categories: string[];
+  deliveryMinimum: number;
+  pickupMinimum: number;
 };
 
 export type AdminUser = {

@@ -2,26 +2,20 @@
 
 import { jsPDF } from "jspdf";
 import {
+  clearAdminSessionRemote,
   createProduct,
+  getAdminSessionRemote,
   getAdminSettingsRemote,
   getDashboardSummary,
   getDeliveryList,
   getOrdersForAdmin,
   getProductsCatalog,
+  loginAdminRemote,
+  saveAdminProfileRemote,
   saveAdminSettingsRemote,
   sendCustomerAlertRemote,
   updateOrderStatusRemote,
 } from "@/lib/api";
-import {
-  authenticateAdmin,
-  clearAdminSession,
-  getAdminProfile,
-  getAdminSession,
-  getAdminSettings,
-  saveAdminProfile,
-  saveAdminSettings,
-  updateOrderStatus,
-} from "@/lib/storage";
 import { AdminSettings, AdminUser, DashboardSummary, Order, Product } from "@/types/domain";
 import {
   ChartNoAxesColumn,
@@ -123,7 +117,13 @@ export default function AdminClient() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [deliveries, setDeliveries] = useState<Order[]>([]);
   const [summary, setSummary] = useState<DashboardSummary>({ revenueToday: 0, ordersToday: 0, productsToday: 0, totalProducts: 0 });
-  const [settings, setSettings] = useState<AdminSettings>(getAdminSettings());
+  const [settings, setSettings] = useState<AdminSettings>({
+    pixKey: "",
+    whatsappNumber: "",
+    categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
+    deliveryMinimum: 150,
+    pickupMinimum: 100,
+  });
   const [productForm, setProductForm] = useState<ProductFormState>(initialProduct);
   const [newCategory, setNewCategory] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -132,22 +132,25 @@ export default function AdminClient() {
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
 
   useEffect(() => {
-    const session = getAdminSession();
-    const profile = getAdminProfile();
-    const adminSettings = getAdminSettings();
-    setSettings(adminSettings);
-    setProfileForm({
-      name: profile.name,
-      username: profile.username,
-      password: profile.password || "123456",
-      profileImage: profile.profileImage || "",
-    });
-    setProductForm((current) => ({ ...current, category: adminSettings.categories[0] || "Mercearia" }));
+    const bootstrap = async () => {
+      const adminSettings = await getAdminSettingsRemote();
+      setSettings(adminSettings);
+      setProductForm((current) => ({ ...current, category: adminSettings.categories[0] || "Mercearia" }));
 
-    if (session) {
-      setAdminUser(session);
-      void refreshAll();
-    }
+      const session = await getAdminSessionRemote();
+      if (session) {
+        setAdminUser(session);
+        setProfileForm({
+          name: session.name,
+          username: session.username,
+          password: session.password || "123456",
+          profileImage: session.profileImage || "",
+        });
+        await refreshAll();
+      }
+    };
+
+    void bootstrap();
   }, []);
 
   useEffect(() => {
@@ -225,20 +228,28 @@ export default function AdminClient() {
 
   function handleLogin(event: React.FormEvent) {
     event.preventDefault();
-    const user = authenticateAdmin(authForm.username, authForm.password);
-    if (!user) {
-      setAuthError("Usuario ou senha invalidos.");
-      return;
-    }
-    setAdminUser(user);
-    setAuthError("");
-    setAdminNotice({ type: "success", text: "Login realizado com sucesso. Bem-vindo ao painel." });
-    setAuthForm((current) => ({ ...current, password: "" }));
-    void refreshAll();
+    void (async () => {
+      const user = await loginAdminRemote(authForm.username, authForm.password);
+      if (!user) {
+        setAuthError("Usuario ou senha invalidos.");
+        return;
+      }
+      setAdminUser(user);
+      setProfileForm({
+        name: user.name,
+        username: user.username,
+        password: user.password || "123456",
+        profileImage: user.profileImage || "",
+      });
+      setAuthError("");
+      setAdminNotice({ type: "success", text: "Login realizado com sucesso. Bem-vindo ao painel." });
+      setAuthForm((current) => ({ ...current, password: "" }));
+      await refreshAll();
+    })();
   }
 
   function handleLogout() {
-    clearAdminSession();
+    void clearAdminSessionRemote();
     setAdminUser(null);
     setMenuOpen(false);
   }
@@ -267,7 +278,6 @@ export default function AdminClient() {
     if (!trimmed || settings.categories.includes(trimmed)) return;
     const next = { ...settings, categories: [...settings.categories, trimmed] };
     setSettings(next);
-    saveAdminSettings(next);
     setNewCategory("");
     setAdminNotice({ type: "info", text: `Categoria ${trimmed} adicionada.` });
   }
@@ -288,7 +298,6 @@ export default function AdminClient() {
     };
 
     setSettings(nextSettings);
-    saveAdminSettings(nextSettings);
     setProductForm((current) => ({
       ...current,
       category: current.category === categoryToDelete ? filteredCategories[0] || "Mercearia" : current.category,
@@ -296,7 +305,6 @@ export default function AdminClient() {
 
     try {
       const saved = await saveAdminSettingsRemote(nextSettings);
-      saveAdminSettings(saved);
       setSettings(saved);
     } catch {
       // Keep local state when remote settings update is unavailable.
@@ -305,31 +313,33 @@ export default function AdminClient() {
     setAdminNotice({ type: "success", text: `Categoria ${categoryToDelete} excluida com sucesso.` });
   }
 
-  async function handleSaveSettings() {
-    const nextSettings = await saveAdminSettingsRemote(settings);
-    saveAdminSettings(nextSettings);
-    setSettings(nextSettings);
-    setAdminNotice({ type: "success", text: "Configuracoes salvas com sucesso." });
-    void refreshAll();
-  }
-
-  function handleSaveProfile() {
+  async function handleSaveProfile() {
     const nextProfile: AdminUser = {
       name: profileForm.name,
       username: profileForm.username,
       password: profileForm.password,
       profileImage: profileForm.profileImage,
     };
-    saveAdminProfile(nextProfile);
-    setAdminUser(nextProfile);
-    setAdminNotice({ type: "success", text: "Perfil do administrador atualizado." });
+
+    const normalizedSettings: AdminSettings = {
+      ...settings,
+      deliveryMinimum: Math.max(0, Number(settings.deliveryMinimum) || 0),
+      pickupMinimum: Math.max(0, Number(settings.pickupMinimum) || 0),
+    };
+
+    const savedProfile = await saveAdminProfileRemote(nextProfile);
+    setAdminUser(savedProfile);
+
+    const nextSettings = await saveAdminSettingsRemote(normalizedSettings);
+    setSettings(nextSettings);
+
+    setAdminNotice({ type: "success", text: "Perfil e configuracoes do painel atualizados." });
     setProfileOpen(false);
   }
 
   async function handleStatusChange(orderId: string, status: Order["status"]) {
     const selected = orders.find((order) => order.id === orderId);
     await updateOrderStatusRemote(orderId, status, selected?.paymentConfirmed ?? false);
-    updateOrderStatus(orderId, status, selected?.paymentConfirmed ?? false);
     setAdminNotice({ type: "success", text: `Status do pedido #${orderId.slice(0, 8)} atualizado para ${status}.` });
     void refreshAll();
   }
@@ -337,7 +347,6 @@ export default function AdminClient() {
   async function handlePaymentConfirmation(orderId: string, confirmed: boolean) {
     const selected = orders.find((order) => order.id === orderId);
     await updateOrderStatusRemote(orderId, selected?.status || "novo", confirmed);
-    updateOrderStatus(orderId, selected?.status || "novo", confirmed);
     setAdminNotice({ type: "success", text: confirmed ? `Pagamento do pedido #${orderId.slice(0, 8)} confirmado.` : `Pagamento do pedido #${orderId.slice(0, 8)} marcado como pendente.` });
     void refreshAll();
   }
@@ -661,14 +670,6 @@ export default function AdminClient() {
                       ))}
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
-                    <h2 className="text-lg font-bold">Chave Pix e WhatsApp</h2>
-                    <div className="mt-3 grid gap-2">
-                      <input value={settings.pixKey} onChange={(event) => setSettings((current) => ({ ...current, pixKey: event.target.value }))} placeholder="Chave Pix" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
-                      <input value={settings.whatsappNumber} onChange={(event) => setSettings((current) => ({ ...current, whatsappNumber: event.target.value }))} placeholder="Numero do WhatsApp da empresa" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
-                      <button type="button" onClick={handleSaveSettings} className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">Salvar Configuracoes</button>
-                    </div>
-                  </div>
                 </div>
               </section>
             )}
@@ -870,6 +871,40 @@ export default function AdminClient() {
                 <input type={showProfilePassword ? "text" : "password"} value={profileForm.password} onChange={(event) => setProfileForm((current) => ({ ...current, password: event.target.value }))} placeholder="Nova senha" className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 pr-10 text-sm" />
                 <button type="button" onClick={() => setShowProfilePassword((current) => !current)} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400">{showProfilePassword ? <EyeOff size={16} /> : <Eye size={16} />}</button>
               </div>
+
+              <div className="mt-2 rounded-xl border border-[#1A1A1A] bg-black/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">Configuracoes de pedido</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={settings.deliveryMinimum}
+                    onChange={(event) => setSettings((current) => ({ ...current, deliveryMinimum: Number(event.target.value || 0) }))}
+                    placeholder="Minimo entrega"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step="1"
+                    value={settings.pickupMinimum}
+                    onChange={(event) => setSettings((current) => ({ ...current, pickupMinimum: Number(event.target.value || 0) }))}
+                    placeholder="Minimo retirada"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </div>
+                <p className="mt-2 text-[11px] text-zinc-500">Valores em reais (R$).</p>
+              </div>
+
+              <div className="rounded-xl border border-[#1A1A1A] bg-black/40 p-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">Contato e pagamento</p>
+                <div className="mt-2 grid gap-2">
+                  <input value={settings.pixKey} onChange={(event) => setSettings((current) => ({ ...current, pixKey: event.target.value }))} placeholder="Chave Pix" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
+                  <input value={settings.whatsappNumber} onChange={(event) => setSettings((current) => ({ ...current, whatsappNumber: event.target.value }))} placeholder="Numero do WhatsApp da empresa" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
+                </div>
+              </div>
+
               <button type="button" onClick={handleSaveProfile} className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">Salvar perfil</button>
             </div>
           </div>
