@@ -2,14 +2,17 @@
 
 import { jsPDF } from "jspdf";
 import {
+  createAdminUserRemote,
   clearAdminSessionRemote,
   createProduct,
+  deleteAdminUserRemote,
   getAdminSessionRemote,
   getAdminSettingsRemote,
   getDashboardSummary,
   getDeliveryList,
   getOrdersForAdmin,
   getProductsCatalog,
+  listAdminUsersRemote,
   loginAdminRemote,
   saveAdminProfileRemote,
   saveAdminSettingsRemote,
@@ -32,11 +35,13 @@ import {
   Settings2,
   Truck,
   User,
+  UserPlus,
   Users,
   X,
   CheckCircle2,
   AlertCircle,
   Info,
+  Trash2,
 } from "lucide-react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -130,6 +135,8 @@ export default function AdminClient() {
   const [newCategory, setNewCategory] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({ name: "", username: "", password: "", profileImage: "" });
+  const [adminAccounts, setAdminAccounts] = useState<AdminUser[]>([]);
+  const [adminForm, setAdminForm] = useState({ name: "", username: "", password: "123456" });
   const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
 
@@ -148,6 +155,7 @@ export default function AdminClient() {
           password: session.password || "123456",
           profileImage: session.profileImage || "",
         });
+        setAdminAccounts(await listAdminUsersRemote());
         await refreshAll();
       }
     };
@@ -170,6 +178,7 @@ export default function AdminClient() {
     setDeliveries(await getDeliveryList());
     setSummary(await getDashboardSummary());
     setSettings(await getAdminSettingsRemote());
+    setAdminAccounts(await listAdminUsersRemote());
   }
 
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Dashboard";
@@ -246,6 +255,7 @@ export default function AdminClient() {
       setAuthError("");
       setAdminNotice({ type: "success", text: "Login realizado com sucesso. Bem-vindo ao painel." });
       setAuthForm((current) => ({ ...current, password: "" }));
+      setAdminAccounts(await listAdminUsersRemote());
       await refreshAll();
     })();
   }
@@ -333,12 +343,57 @@ export default function AdminClient() {
 
     const savedProfile = await saveAdminProfileRemote(nextProfile);
     setAdminUser(savedProfile);
+    setProfileForm({
+      name: savedProfile.name,
+      username: savedProfile.username,
+      password: savedProfile.password || "123456",
+      profileImage: savedProfile.profileImage || "",
+    });
 
     const nextSettings = await saveAdminSettingsRemote(normalizedSettings);
     setSettings(nextSettings);
+    setAdminAccounts(await listAdminUsersRemote());
 
     setAdminNotice({ type: "success", text: "Perfil e configuracoes do painel atualizados." });
     setProfileOpen(false);
+  }
+
+  async function handleCreateAdminUser(event: React.FormEvent) {
+    event.preventDefault();
+
+    const result = await createAdminUserRemote({
+      name: adminForm.name,
+      username: adminForm.username,
+      password: adminForm.password,
+    });
+
+    if (!result.user) {
+      setAdminNotice({ type: "error", text: result.error || "Falha ao criar administrador." });
+      return;
+    }
+
+    setAdminForm({ name: "", username: "", password: "123456" });
+    setAdminAccounts(await listAdminUsersRemote());
+    setAdminNotice({ type: "success", text: `Administrador @${result.user.username} criado com sucesso.` });
+  }
+
+  async function handleDeleteAdminUser(username: string) {
+    if (username === adminUser?.username) {
+      setAdminNotice({ type: "error", text: "Voce nao pode remover o administrador atualmente logado." });
+      return;
+    }
+
+    const confirmed = window.confirm(`Deseja remover o administrador @${username}?`);
+    if (!confirmed) return;
+
+    const result = await deleteAdminUserRemote(username);
+    if (!result.success) {
+      setAdminNotice({ type: "error", text: result.error || "Falha ao remover administrador." });
+      return;
+    }
+
+    setAdminAccounts(await listAdminUsersRemote());
+    setAdminNotice({ type: "success", text: `Administrador @${username} removido.` });
   }
 
   async function handleStatusChange(orderId: string, status: Order["status"]) {
@@ -936,6 +991,58 @@ export default function AdminClient() {
                   <input value={settings.pixKey} onChange={(event) => setSettings((current) => ({ ...current, pixKey: event.target.value }))} placeholder="Chave Pix" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
                   <input value={settings.whatsappNumber} onChange={(event) => setSettings((current) => ({ ...current, whatsappNumber: event.target.value }))} placeholder="Numero do WhatsApp da empresa" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-[#1A1A1A] bg-black/40 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-400">Acessos do painel</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">Limite de 3 administradores cadastrados.</p>
+                  </div>
+                  <span className="rounded-full border border-[#1A1A1A] px-2 py-1 text-[11px] text-zinc-300">{adminAccounts.length}/3</span>
+                </div>
+
+                <div className="mt-3 space-y-2">
+                  {adminAccounts.map((account) => (
+                    <div key={account.username} className="flex items-center justify-between gap-3 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
+                      <div>
+                        <p className="font-semibold text-white">{account.name}</p>
+                        <p className="text-xs text-zinc-400">@{account.username}</p>
+                      </div>
+                      {account.username === "admin" ? (
+                        <span className="text-[11px] text-[#B2FF00]">Principal</span>
+                      ) : (
+                        <button type="button" onClick={() => void handleDeleteAdminUser(account.username)} className="rounded-lg border border-[#1A1A1A] p-2 text-zinc-300 hover:border-red-500 hover:text-red-300" aria-label={`Remover ${account.username}`}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <form onSubmit={handleCreateAdminUser} className="mt-3 grid gap-2">
+                  <input
+                    value={adminForm.name}
+                    onChange={(event) => setAdminForm((current) => ({ ...current, name: event.target.value }))}
+                    placeholder="Nome do novo administrador"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={adminForm.username}
+                    onChange={(event) => setAdminForm((current) => ({ ...current, username: event.target.value }))}
+                    placeholder="Usuario do novo administrador"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                  <input
+                    value={adminForm.password}
+                    onChange={(event) => setAdminForm((current) => ({ ...current, password: event.target.value }))}
+                    placeholder="Senha inicial"
+                    className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                  <button type="submit" disabled={adminAccounts.length >= 3} className="flex items-center justify-center gap-2 rounded-xl bg-[#00AAFF] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-50">
+                    <UserPlus size={15} /> Adicionar administrador
+                  </button>
+                </form>
               </div>
 
               <button type="button" onClick={handleSaveProfile} className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">Salvar perfil</button>

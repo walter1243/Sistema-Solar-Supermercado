@@ -213,3 +213,42 @@ export async function saveAdminProfileRemote(profile: AdminUser): Promise<AdminU
   );
   return remote || profile;
 }
+
+export async function listAdminUsersRemote(): Promise<AdminUser[]> {
+  const remote = unwrapData<AdminUser[]>(await apiFetch<unknown>("/api/admin/users", { method: "GET" }));
+  return remote || [];
+}
+
+export async function createAdminUserRemote(profile: AdminUser): Promise<{ user: AdminUser | null; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(profile),
+    });
+    const payload = (await res.json()) as { data?: AdminUser; error?: string };
+    if (!res.ok) {
+      return { user: null, error: payload.error || "Falha ao criar administrador." };
+    }
+    return { user: payload.data || null };
+  } catch {
+    return { user: null, error: "Falha ao criar administrador." };
+  }
+}
+
+export async function deleteAdminUserRemote(username: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/admin/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username }),
+    });
+    const payload = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok) {
+      return { success: false, error: payload.error || "Falha ao remover administrador." };
+    }
+    return { success: Boolean(payload.success) };
+  } catch {
+    return { success: false, error: "Falha ao remover administrador." };
+  }
+}

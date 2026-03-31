@@ -79,6 +79,7 @@ function normalizePhone(phone: string) {
 function mapAdminRow(row: Record<string, unknown> | undefined): AdminUser | null {
   if (!row) return null;
   return {
+    id: Number(row.id || 0) || undefined,
     username: String(row.username || defaultAdmin.username),
     name: String(row.name || defaultAdmin.name),
     profileImage: String(row.profile_image || ""),
@@ -299,6 +300,60 @@ export async function saveAdminProfile(currentUsername: string, profile: AdminUs
     WHERE username = ${currentUsername};
   `;
   return next;
+}
+
+export async function listAdminUsers(): Promise<AdminUser[]> {
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM admin_users ORDER BY id ASC;`;
+  return rows.map((row) => mapAdminRow(row)).filter(Boolean) as AdminUser[];
+}
+
+export async function createAdminUser(profile: AdminUser): Promise<AdminUser> {
+  await ensureSchema();
+  const existingUsers = await listAdminUsers();
+  if (existingUsers.length >= 3) {
+    throw new Error("Limite de 3 administradores atingido.");
+  }
+
+  const username = profile.username.trim();
+  if (!username) {
+    throw new Error("Informe um usuario para o administrador.");
+  }
+
+  const duplicate = existingUsers.find((item) => item.username.toLowerCase() === username.toLowerCase());
+  if (duplicate) {
+    throw new Error("Ja existe um administrador com esse usuario.");
+  }
+
+  const nextId = existingUsers.reduce((maxId, item) => Math.max(maxId, item.id || 0), 0) + 1;
+  const next: AdminUser = {
+    id: nextId,
+    username,
+    name: profile.name.trim() || `Administrador ${nextId}`,
+    profileImage: profile.profileImage || "",
+    password: profile.password?.trim() || "123456",
+  };
+
+  await sql`
+    INSERT INTO admin_users (id, username, name, profile_image, password)
+    VALUES (${next.id}, ${next.username}, ${next.name}, ${next.profileImage || ""}, ${next.password || "123456"});
+  `;
+
+  return next;
+}
+
+export async function deleteAdminUser(username: string): Promise<void> {
+  await ensureSchema();
+  const normalizedUsername = username.trim();
+  if (!normalizedUsername) {
+    throw new Error("Administrador invalido.");
+  }
+
+  if (normalizedUsername === "admin") {
+    throw new Error("O admin principal nao pode ser removido.");
+  }
+
+  await sql`DELETE FROM admin_users WHERE username = ${normalizedUsername};`;
 }
 
 export async function getProducts(): Promise<Product[]> {

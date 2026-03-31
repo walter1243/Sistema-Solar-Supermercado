@@ -52,6 +52,7 @@ export type AdminSettings = {
 };
 
 export type AdminUser = {
+  id?: number;
   username: string;
   name: string;
   profileImage?: string;
