@@ -665,7 +665,7 @@ export default function StorefrontClient() {
             aria-label="Abrir categorias"
           >
             <img
-              src="/logo-solar-wordmark.svg"
+              src="/nova%20logo%20solar%20AMRELO.svg"
               alt="Solar Supermercado"
               className="block h-full w-full object-contain"
             />
