@@ -374,6 +374,7 @@ export default function StorefrontClient() {
   }, [customerSession, lastOrderId, orders, profile.phone]);
 
   const unreadAlerts = useMemo(() => customerAlerts.filter((alert) => !alert.readAt), [customerAlerts]);
+  const topUnreadAlert = unreadAlerts[0] || null;
 
   function addToCart(productId: string) {
     setCart((prev) => {
@@ -714,25 +715,22 @@ export default function StorefrontClient() {
           </div>
         )}
 
-        {customerSession && unreadAlerts.length ? (
-          <div className="mb-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Bell size={14} className="text-[#B2FF00]" />
-              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">Alertas do painel</p>
-            </div>
-            <div className="space-y-2">
-              {unreadAlerts.slice(0, 3).map((alert) => (
-                <div key={alert.id} className="rounded-xl border border-[#2A5C35] bg-[#0B2418] p-2">
-                  <p className="text-sm font-semibold">{alert.title}</p>
-                  <p className="mt-1 text-xs text-zinc-300">{alert.message}</p>
-                  <div className="mt-2 flex items-center justify-between">
-                    <span className="text-[10px] text-zinc-500">{new Date(alert.createdAt).toLocaleString("pt-BR")}</span>
-                    <button type="button" onClick={() => void handleMarkAlertAsRead(alert.id)} className="rounded-lg border border-[#B2FF00] px-2 py-1 text-[10px] font-semibold text-[#B2FF00]">
-                      Marcar como lido
-                    </button>
-                  </div>
-                </div>
-              ))}
+        {customerSession && topUnreadAlert ? (
+          <div className="mb-4 rounded-xl border border-[#2A5C35] bg-[#0B2418] px-3 py-2">
+            <div className="flex items-start gap-2">
+              <Bell size={14} className="mt-0.5 text-[#B2FF00]" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-[#B2FF00]">Novo alerta</p>
+                <p className="mt-0.5 text-sm font-semibold text-white">{topUnreadAlert.title}</p>
+                <p className="line-clamp-2 text-xs text-zinc-300">{topUnreadAlert.message}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleMarkAlertAsRead(topUnreadAlert.id)}
+                className="rounded-lg border border-[#B2FF00] px-2 py-1 text-[10px] font-semibold text-[#B2FF00]"
+              >
+                Lido
+              </button>
             </div>
             {whatsAppDraftMessage ? (
               <p className="mt-2 text-[11px] text-[#9BFFD1]">Mensagem pronta para WhatsApp. Toque no icone verde para falar com o administrador.</p>
