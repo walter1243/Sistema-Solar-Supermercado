@@ -661,11 +661,11 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[#1A1A1A] bg-black p-0"
+            className="grid h-12 w-20 place-items-center overflow-hidden rounded-xl border border-[#1A1A1A] bg-black px-1"
             aria-label="Abrir categorias"
           >
             <img
-              src="/logo-solar-amarelo.png"
+              src="/image-removebg-preview.png"
               alt="Solar Supermercado"
               className="block h-full w-full object-contain"
             />

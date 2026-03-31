@@ -244,15 +244,6 @@ export default function AdminClient() {
     );
   }, [customerAccounts, orders]);
 
-  useEffect(() => {
-    if (!customerAlertForm.customerId && uniqueCustomers.length) {
-      const firstWithAccount = uniqueCustomers.find((customer) => customer.customerId)?.customerId || "";
-      if (firstWithAccount) {
-        setCustomerAlertForm((current) => ({ ...current, customerId: firstWithAccount }));
-      }
-    }
-  }, [customerAlertForm.customerId, uniqueCustomers]);
-
   function handleLogin(event: React.FormEvent) {
     event.preventDefault();
     void (async () => {
@@ -573,7 +564,7 @@ export default function AdminClient() {
     }
 
     setAdminNotice({ type: "success", text: "Alerta enviado para o cliente com sucesso." });
-    setCustomerAlertForm((current) => ({ ...current, title: "", message: "" }));
+    setCustomerAlertForm({ customerId: "", title: "", message: "" });
   }
 
   const commandButtons = (
@@ -608,7 +599,7 @@ export default function AdminClient() {
               <img
                 src="/image-removebg-preview.png"
                 alt="Solar Supermercado"
-                className="mx-auto h-8 w-auto max-w-[120px] object-contain sm:h-10 sm:max-w-[150px] md:h-11 md:max-w-[180px]"
+                className="mx-auto h-14 w-auto max-w-[280px] object-contain sm:h-16 sm:max-w-[320px] md:h-20 md:max-w-[360px]"
               />
               <h1 className="mt-3 text-xl font-black tracking-tight">Painel Admin</h1>
               <p className="mt-1 text-xs text-zinc-300">Acesse para gerenciar pedidos e entregas.</p>
