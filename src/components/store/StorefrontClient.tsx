@@ -662,7 +662,7 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="grid h-12 w-32 place-items-center rounded-xl border border-[#1A1A1A] bg-black px-2"
+            className="grid h-11 w-28 place-items-center rounded-xl border border-[#1A1A1A] bg-black px-1.5"
             aria-label="Abrir categorias"
           >
             <Image
@@ -671,7 +671,7 @@ export default function StorefrontClient() {
               width={173}
               height={55}
               priority
-              className="h-8 w-auto object-contain"
+              className="h-7 w-auto max-w-full object-contain"
             />
           </button>
 
@@ -1118,9 +1118,8 @@ export default function StorefrontClient() {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
-            className="fixed bottom-24 right-4 z-40 flex items-center gap-2"
+            className="fixed bottom-24 right-4 z-40"
           >
-            <span className="rounded-full border border-[#1A1A1A] bg-black/90 px-3 py-1 text-xs font-semibold text-[#25D366] md:hidden">WhatsApp</span>
             <button
               type="button"
               onClick={openCompanyWhatsApp}
