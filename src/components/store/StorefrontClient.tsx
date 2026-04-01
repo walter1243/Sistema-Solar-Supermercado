@@ -145,6 +145,7 @@ export default function StorefrontClient() {
   const whatsappX = useMotionValue(0);
   const whatsappY = useMotionValue(0);
   const [meatCutSelections, setMeatCutSelections] = useState<Record<string, string>>({});
+  const [meatSelectionModal, setMeatSelectionModal] = useState<{ productId: string; cut: string; quantityKg: number } | null>(null);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastPixOrder, setLastPixOrder] = useState<Order | null>(null);
   const [pixFlowOpen, setPixFlowOpen] = useState(false);
@@ -460,6 +461,13 @@ export default function StorefrontClient() {
 
   const MEAT_CUTS = ["Bife", "Inteiro", "Moído"] as const;
 
+  function formatQuantityLabel(value: number, product?: Product) {
+    if (product?.unit === "kg") {
+      return `${value.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`;
+    }
+    return String(value);
+  }
+
   function isMeat(product: Product) {
     return normalizeCategory(product.category) === "carnes";
   }
@@ -468,13 +476,33 @@ export default function StorefrontClient() {
     return meatCutSelections[productId] ?? MEAT_CUTS[0];
   }
 
-  function updateCartMeatCut(productId: string, cut: string) {
-    setMeatCutSelections((prev) => ({ ...prev, [productId]: cut }));
-    setCart((prev) =>
-      prev.map((item) =>
-        item.productId === productId ? { ...item, meatCut: cut } : item
-      )
-    );
+  function openMeatSelection(product: Product) {
+    const existing = cart.find((item) => item.productId === product.id);
+    setMeatSelectionModal({
+      productId: product.id,
+      cut: existing?.meatCut ?? getMeatCut(product.id),
+      quantityKg: existing?.quantity ?? 1,
+    });
+  }
+
+  function confirmMeatSelection() {
+    if (!meatSelectionModal) return;
+    const normalizedKg = Number(meatSelectionModal.quantityKg);
+    if (!Number.isFinite(normalizedKg) || normalizedKg <= 0) return;
+
+    const roundedKg = Math.round(normalizedKg * 100) / 100;
+    setMeatCutSelections((prev) => ({ ...prev, [meatSelectionModal.productId]: meatSelectionModal.cut }));
+    setCart((prev) => {
+      const index = prev.findIndex((item) => item.productId === meatSelectionModal.productId);
+      if (index === -1) {
+        return [...prev, { productId: meatSelectionModal.productId, quantity: roundedKg, meatCut: meatSelectionModal.cut }];
+      }
+      const next = [...prev];
+      next[index] = { ...next[index], quantity: roundedKg, meatCut: meatSelectionModal.cut };
+      return next;
+    });
+    setMeatSelectionModal(null);
+    setCheckoutError("");
   }
 
   function addToCart(productId: string, meatCut?: string) {
@@ -874,38 +902,58 @@ export default function StorefrontClient() {
               </div>
               <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-2 gap-3">
                 {section.items.map((product) => (
-                  <motion.article key={product.id} variants={itemVariants} whileHover={{ y: -5, scale: 1.01 }} className="group overflow-hidden rounded-2xl border border-[#1A1A1A] bg-[#080808] shadow-[0_6px_20px_rgba(0,0,0,0.35)]">
-                    <div className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-[#111111]">
+                  <motion.article
+                    key={product.id}
+                    variants={itemVariants}
+                    whileHover={{ y: -5, scale: 1.01 }}
+                    onClick={() => {
+                      if (isMeat(product)) {
+                        openMeatSelection(product);
+                      }
+                    }}
+                    className={`group overflow-hidden rounded-2xl border border-[#1A1A1A] bg-[#080808] shadow-[0_6px_20px_rgba(0,0,0,0.35)] ${isMeat(product) ? "cursor-pointer" : ""}`}
+                  >
+                    <div className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-transparent">
                       <img src={product.image} alt={product.name} className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105" loading="lazy" />
-                      {quantityMap.get(product.id) ? <div className="absolute right-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black text-black">{quantityMap.get(product.id)} no carrinho</div> : null}
+                      {quantityMap.get(product.id) ? <div className="absolute right-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black text-black">{formatQuantityLabel(quantityMap.get(product.id) || 0, product)} no carrinho</div> : null}
                     </div>
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{product.category}</p>
                       <h2 className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-tight">{product.name}</h2>
                       {isMeat(product) && (
-                        <div className="mt-1.5 flex gap-1">
-                          {MEAT_CUTS.map((cut) => (
-                            <button
-                              key={cut}
-                              type="button"
-                              onClick={() => updateCartMeatCut(product.id, cut)}
-                              className={`flex-1 rounded-lg border py-1 text-[10px] font-semibold transition-colors ${
-                                getMeatCut(product.id) === cut
-                                  ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]"
-                                  : "border-[#1A1A1A] text-zinc-400"
-                              }`}
-                            >
-                              {cut}
-                            </button>
-                          ))}
+                        <div className="mt-1.5">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openMeatSelection(product);
+                            }}
+                            className="w-full rounded-lg border border-[#1A1A1A] bg-black/60 py-1.5 text-[10px] font-semibold text-zinc-300"
+                          >
+                            Escolher corte e kg
+                          </button>
+                          <p className="mt-1 text-[10px] text-[#B2FF00]">Corte atual: {getMeatCut(product.id)}</p>
                         </div>
                       )}
                       <div className="mt-2 flex items-center justify-between">
                         <strong className="text-sm font-black text-[#B2FF00]">{formatCurrency(product.price)}</strong>
-                        <div className="flex items-center gap-1">
-                          <button type="button" onClick={() => decrementFromCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A]" aria-label="Diminuir"><Minus size={13} /></button>
-                          <button type="button" onClick={() => addToCart(product.id, isMeat(product) ? getMeatCut(product.id) : undefined)} className="grid h-7 w-7 place-items-center rounded-full bg-[#00AAFF] text-black" aria-label="Adicionar"><Plus size={13} /></button>
-                        </div>
+                        {isMeat(product) ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openMeatSelection(product);
+                            }}
+                            className="rounded-full border border-[#1A1A1A] px-3 py-1 text-[10px] font-semibold text-zinc-300"
+                          >
+                            Selecionar
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={() => decrementFromCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A]" aria-label="Diminuir"><Minus size={13} /></button>
+                            <button type="button" onClick={() => addToCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full bg-[#00AAFF] text-black" aria-label="Adicionar"><Plus size={13} /></button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </motion.article>
@@ -1031,7 +1079,7 @@ export default function StorefrontClient() {
                             <p className="mt-0.5 text-[10px] font-semibold text-[#B2FF00]">Corte: {item.meatCut}</p>
                           )}
                           <div className="mt-2 flex items-center justify-between">
-                            <span className="text-xs text-zinc-400">Qtd: {item.quantity}</span>
+                            <span className="text-xs text-zinc-400">Qtd: {formatQuantityLabel(item.quantity, product)}</span>
                             <div className="flex items-center gap-2">
                               <button type="button" onClick={() => setEditItemId(editing ? null : item.productId)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A]" aria-label="Editar quantidade"><Pencil size={13} /></button>
                               <button type="button" onClick={() => removeFromCart(item.productId)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A] text-red-400" aria-label="Remover item"><Trash2 size={13} /></button>
@@ -1174,6 +1222,50 @@ export default function StorefrontClient() {
                 </motion.div>
               )}
             </motion.aside>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {meatSelectionModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/70 p-4" onClick={() => setMeatSelectionModal(null)}>
+            <motion.div initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }} onClick={(event) => event.stopPropagation()} className="mx-auto mt-20 w-full max-w-sm rounded-3xl border border-[#1A1A1A] bg-[#080808] p-4">
+              <h3 className="text-base font-black">Escolha o corte da carne</h3>
+              <p className="mt-1 text-xs text-zinc-400">Defina o corte e a quantidade em kg.</p>
+
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {MEAT_CUTS.map((cut) => (
+                  <button
+                    key={cut}
+                    type="button"
+                    onClick={() => setMeatSelectionModal((current) => (current ? { ...current, cut } : current))}
+                    className={`rounded-xl border px-2 py-2 text-xs font-semibold ${meatSelectionModal.cut === cut ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A] text-zinc-300"}`}
+                  >
+                    {cut}
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-3">
+                <label className="mb-1 block text-xs text-zinc-400">Quantidade (kg)</label>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  value={meatSelectionModal.quantityKg}
+                  onChange={(event) => {
+                    const numeric = Number(event.target.value);
+                    setMeatSelectionModal((current) => (current ? { ...current, quantityKg: numeric } : current));
+                  }}
+                  className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setMeatSelectionModal(null)} className="rounded-xl border border-[#1A1A1A] py-2 text-sm">Cancelar</button>
+                <button type="button" onClick={confirmMeatSelection} className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black">Adicionar</button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

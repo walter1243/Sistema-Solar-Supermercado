@@ -165,6 +165,7 @@ export default function AdminClient() {
   const [adminForm, setAdminForm] = useState({ name: "", username: "", password: "123456" });
   const [isSavingAdminUser, setIsSavingAdminUser] = useState(false);
   const [isProcessingProductImage, setIsProcessingProductImage] = useState(false);
+  const [isProductImageDropActive, setIsProductImageDropActive] = useState(false);
   const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
 
@@ -585,6 +586,25 @@ export default function AdminClient() {
     }
   }
 
+  async function handleProductImagePaste(event: React.ClipboardEvent<HTMLDivElement>) {
+    if (isAnyProductActionLoading || isProcessingProductImage) return;
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith("image/"));
+    if (!imageItem) return;
+    event.preventDefault();
+    const pastedFile = imageItem.getAsFile();
+    if (!pastedFile) return;
+    await handleImageFile(pastedFile, "product");
+  }
+
+  async function handleProductImageDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setIsProductImageDropActive(false);
+    if (isAnyProductActionLoading || isProcessingProductImage) return;
+    const droppedFile = event.dataTransfer.files?.[0];
+    if (!droppedFile || !droppedFile.type.startsWith("image/")) return;
+    await handleImageFile(droppedFile, "product");
+  }
+
   function exportCustomersToPDF() {
     if (uniqueCustomers.length === 0) {
       setAdminNotice({ type: "error", text: "Nenhum cliente cadastrado para exportar." });
@@ -871,7 +891,26 @@ export default function AdminClient() {
                     </div>
                     <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleImageFile(file, "product"); }} />
                     <button type="button" onClick={() => productImageInputRef.current?.click()} disabled={isAnyProductActionLoading || isProcessingProductImage} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><ImagePlus size={16} /> {isProcessingProductImage ? "Removendo fundo..." : "Selecionar imagem"}</button>
-                    {productForm.image ? <img src={productForm.image} alt="Preview" className="h-28 w-full rounded-xl object-cover" /> : null}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => productImageInputRef.current?.click()}
+                      onPaste={(event) => void handleProductImagePaste(event)}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        if (!isAnyProductActionLoading && !isProcessingProductImage) {
+                          setIsProductImageDropActive(true);
+                        }
+                      }}
+                      onDragLeave={() => setIsProductImageDropActive(false)}
+                      onDrop={(event) => void handleProductImageDrop(event)}
+                      className={`rounded-xl border border-dashed px-3 py-3 text-center text-xs transition-colors ${
+                        isProductImageDropActive ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A] bg-black text-zinc-400"
+                      }`}
+                    >
+                      Cole com Ctrl+V ou arraste a imagem aqui.
+                    </div>
+                    {productForm.image ? <img src={productForm.image} alt="Preview" className="h-28 w-full rounded-xl bg-transparent object-contain" /> : null}
                     <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} disabled={isAnyProductActionLoading} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
                     </select>
