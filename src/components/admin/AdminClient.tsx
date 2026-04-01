@@ -719,6 +719,7 @@ export default function AdminClient() {
                     <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
                     </select>
+                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">Unidade de medida</p>
                     <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value as ProductUnit }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
                       {productUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                     </select>
