@@ -23,6 +23,7 @@ export type CustomerProfile = {
 export type CartItem = {
   productId: string;
   quantity: number;
+  meatCut?: string; // "Bife" | "Inteiro" | "Moído" — apenas para produtos de carne
 };
 
 export type Order = {

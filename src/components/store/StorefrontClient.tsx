@@ -144,6 +144,7 @@ export default function StorefrontClient() {
   const whatsappPositionInitializedRef = useRef(false);
   const whatsappX = useMotionValue(0);
   const whatsappY = useMotionValue(0);
+  const [meatCutSelections, setMeatCutSelections] = useState<Record<string, string>>({});
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastPixOrder, setLastPixOrder] = useState<Order | null>(null);
   const [pixFlowOpen, setPixFlowOpen] = useState(false);
@@ -457,12 +458,31 @@ export default function StorefrontClient() {
   const unreadAlerts = useMemo(() => customerAlerts.filter((alert) => !alert.readAt), [customerAlerts]);
   const topUnreadAlert = unreadAlerts[0] || null;
 
-  function addToCart(productId: string) {
+  const MEAT_CUTS = ["Bife", "Inteiro", "Moído"] as const;
+
+  function isMeat(product: Product) {
+    return normalizeCategory(product.category) === "carnes";
+  }
+
+  function getMeatCut(productId: string) {
+    return meatCutSelections[productId] ?? MEAT_CUTS[0];
+  }
+
+  function updateCartMeatCut(productId: string, cut: string) {
+    setMeatCutSelections((prev) => ({ ...prev, [productId]: cut }));
+    setCart((prev) =>
+      prev.map((item) =>
+        item.productId === productId ? { ...item, meatCut: cut } : item
+      )
+    );
+  }
+
+  function addToCart(productId: string, meatCut?: string) {
     setCart((prev) => {
       const index = prev.findIndex((item) => item.productId === productId);
-      if (index === -1) return [...prev, { productId, quantity: 1 }];
+      if (index === -1) return [...prev, { productId, quantity: 1, meatCut }];
       const next = [...prev];
-      next[index] = { ...next[index], quantity: next[index].quantity + 1 };
+      next[index] = { ...next[index], quantity: next[index].quantity + 1, meatCut: meatCut ?? next[index].meatCut };
       return next;
     });
     setCheckoutError("");
@@ -624,7 +644,7 @@ export default function StorefrontClient() {
         const product = products.find((p) => p.id === item.productId)!;
         return {
           productId: product.id,
-          name: product.name,
+          name: item.meatCut ? `${product.name} (${item.meatCut})` : product.name,
           quantity: item.quantity,
           unitPrice: product.price,
         };
@@ -862,11 +882,29 @@ export default function StorefrontClient() {
                     <div className="p-2.5">
                       <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{product.category}</p>
                       <h2 className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-tight">{product.name}</h2>
+                      {isMeat(product) && (
+                        <div className="mt-1.5 flex gap-1">
+                          {MEAT_CUTS.map((cut) => (
+                            <button
+                              key={cut}
+                              type="button"
+                              onClick={() => updateCartMeatCut(product.id, cut)}
+                              className={`flex-1 rounded-lg border py-1 text-[10px] font-semibold transition-colors ${
+                                getMeatCut(product.id) === cut
+                                  ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]"
+                                  : "border-[#1A1A1A] text-zinc-400"
+                              }`}
+                            >
+                              {cut}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <div className="mt-2 flex items-center justify-between">
                         <strong className="text-sm font-black text-[#B2FF00]">{formatCurrency(product.price)}</strong>
                         <div className="flex items-center gap-1">
                           <button type="button" onClick={() => decrementFromCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A]" aria-label="Diminuir"><Minus size={13} /></button>
-                          <button type="button" onClick={() => addToCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full bg-[#00AAFF] text-black" aria-label="Adicionar"><Plus size={13} /></button>
+                          <button type="button" onClick={() => addToCart(product.id, isMeat(product) ? getMeatCut(product.id) : undefined)} className="grid h-7 w-7 place-items-center rounded-full bg-[#00AAFF] text-black" aria-label="Adicionar"><Plus size={13} /></button>
                         </div>
                       </div>
                     </div>
@@ -989,6 +1027,9 @@ export default function StorefrontClient() {
                             <span className="line-clamp-1">{product.name}</span>
                             <span>{formatCurrency(product.price * item.quantity)}</span>
                           </div>
+                          {item.meatCut && (
+                            <p className="mt-0.5 text-[10px] font-semibold text-[#B2FF00]">Corte: {item.meatCut}</p>
+                          )}
                           <div className="mt-2 flex items-center justify-between">
                             <span className="text-xs text-zinc-400">Qtd: {item.quantity}</span>
                             <div className="flex items-center gap-2">
