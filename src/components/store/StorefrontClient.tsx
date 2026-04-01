@@ -328,54 +328,50 @@ export default function StorefrontClient() {
   const isPickupUnlocked = total >= pickupMinimum;
   const missingForPickup = Math.max(0, pickupMinimum - total);
 
-  function getWhatsAppCornerTargets() {
-    const maxX = Math.max(WHATSAPP_EDGE_MARGIN, window.innerWidth - WHATSAPP_BUTTON_SIZE - WHATSAPP_EDGE_MARGIN);
-    const maxY = Math.max(
-      WHATSAPP_EDGE_MARGIN,
-      window.innerHeight - WHATSAPP_BUTTON_SIZE - Math.max(WHATSAPP_EDGE_MARGIN, WHATSAPP_BOTTOM_CLEARANCE),
-    );
-
-    return [
-      { x: WHATSAPP_EDGE_MARGIN, y: WHATSAPP_EDGE_MARGIN },
-      { x: maxX, y: WHATSAPP_EDGE_MARGIN },
-      { x: WHATSAPP_EDGE_MARGIN, y: maxY },
-      { x: maxX, y: maxY },
-    ];
+  function getWhatsAppDragBounds() {
+    const minX = WHATSAPP_EDGE_MARGIN;
+    const minY = WHATSAPP_EDGE_MARGIN;
+    const maxX = Math.max(minX, window.innerWidth - WHATSAPP_BUTTON_SIZE - WHATSAPP_EDGE_MARGIN);
+    const maxY = Math.max(minY, window.innerHeight - WHATSAPP_BUTTON_SIZE - Math.max(WHATSAPP_EDGE_MARGIN, WHATSAPP_BOTTOM_CLEARANCE));
+    return { minX, minY, maxX, maxY };
   }
 
-  function snapWhatsAppToNearestCorner() {
-    const corners = getWhatsAppCornerTargets();
-    const currentX = whatsappX.get();
-    const currentY = whatsappY.get();
+  function clampAndPersistWhatsAppPosition() {
+    const bounds = getWhatsAppDragBounds();
+    const clampedX = Math.min(Math.max(whatsappX.get(), bounds.minX), bounds.maxX);
+    const clampedY = Math.min(Math.max(whatsappY.get(), bounds.minY), bounds.maxY);
+    whatsappX.set(clampedX);
+    whatsappY.set(clampedY);
 
-    const nearest = corners.reduce((best, corner) => {
-      const currentDistance = Math.hypot(currentX - corner.x, currentY - corner.y);
-      const bestDistance = Math.hypot(currentX - best.x, currentY - best.y);
-      return currentDistance < bestDistance ? corner : best;
-    }, corners[0]);
-
-    whatsappX.set(nearest.x);
-    whatsappY.set(nearest.y);
+    try {
+      localStorage.setItem("solar_whatsapp_bubble_pos_v1", JSON.stringify({ x: clampedX, y: clampedY }));
+    } catch {
+      // Ignore storage errors on restricted browsers.
+    }
   }
 
   useEffect(() => {
-    function positionWhatsAppBubble() {
-      const corners = getWhatsAppCornerTargets();
-      const bottomRight = corners[3];
+    const bounds = getWhatsAppDragBounds();
 
-      if (!whatsappPositionInitializedRef.current) {
-        whatsappX.set(bottomRight.x);
-        whatsappY.set(bottomRight.y);
-        whatsappPositionInitializedRef.current = true;
-        return;
+    if (!whatsappPositionInitializedRef.current) {
+      let initialX = bounds.maxX;
+      let initialY = bounds.maxY;
+
+      try {
+        const savedRaw = localStorage.getItem("solar_whatsapp_bubble_pos_v1");
+        if (savedRaw) {
+          const saved = JSON.parse(savedRaw) as { x?: number; y?: number };
+          if (typeof saved.x === "number") initialX = saved.x;
+          if (typeof saved.y === "number") initialY = saved.y;
+        }
+      } catch {
+        // Ignore storage read errors.
       }
 
-      snapWhatsAppToNearestCorner();
+      whatsappX.set(Math.min(Math.max(initialX, bounds.minX), bounds.maxX));
+      whatsappY.set(Math.min(Math.max(initialY, bounds.minY), bounds.maxY));
+      whatsappPositionInitializedRef.current = true;
     }
-
-    positionWhatsAppBubble();
-    window.addEventListener("resize", positionWhatsAppBubble);
-    return () => window.removeEventListener("resize", positionWhatsAppBubble);
   }, [whatsappX, whatsappY]);
 
   useEffect(() => {
@@ -1184,7 +1180,7 @@ export default function StorefrontClient() {
               dragMomentum={false}
               dragElastic={0.08}
               style={{ x: whatsappX, y: whatsappY }}
-              onDragEnd={snapWhatsAppToNearestCorner}
+              onDragEnd={clampAndPersistWhatsAppPosition}
               initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.85 }}
