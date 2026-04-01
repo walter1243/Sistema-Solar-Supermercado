@@ -375,6 +375,32 @@ export default function StorefrontClient() {
   }, [whatsappX, whatsappY]);
 
   useEffect(() => {
+    try {
+      const savedScrollRaw = localStorage.getItem("solar_store_scroll_y_v1");
+      if (!savedScrollRaw) return;
+      const savedScroll = Number(savedScrollRaw);
+      if (!Number.isFinite(savedScroll)) return;
+
+      window.setTimeout(() => {
+        window.scrollTo({ top: savedScroll, behavior: "auto" });
+      }, 80);
+    } catch {
+      // Ignore storage issues.
+    }
+  }, []);
+
+  function persistReturnStateBeforeWhatsApp() {
+    clampAndPersistWhatsAppPosition();
+
+    try {
+      localStorage.setItem("solar_store_scroll_y_v1", String(window.scrollY || 0));
+      localStorage.setItem("solar_store_last_path_v1", `${window.location.pathname}${window.location.search}`);
+    } catch {
+      // Ignore storage issues.
+    }
+  }
+
+  useEffect(() => {
     if (!isDeliveryUnlocked && fulfillmentMethod === "entrega") {
       setFulfillmentMethod("retirada");
     }
@@ -480,6 +506,7 @@ export default function StorefrontClient() {
   function openCompanyWhatsApp() {
     const phone = settings.whatsappNumber.replace(/\D/g, "");
     if (!phone) return;
+    persistReturnStateBeforeWhatsApp();
     const waPhone = phone.startsWith("55") ? phone : `55${phone}`;
     const suffix = whatsAppDraftMessage ? `?text=${encodeURIComponent(whatsAppDraftMessage)}` : "";
     window.open(`https://wa.me/${waPhone}${suffix}`, "_blank", "noopener,noreferrer");
@@ -488,6 +515,7 @@ export default function StorefrontClient() {
   function openPixProofWhatsApp(order: Order) {
     const phone = settings.whatsappNumber.replace(/\D/g, "");
     if (!phone) return;
+    persistReturnStateBeforeWhatsApp();
     const waPhone = phone.startsWith("55") ? phone : `55${phone}`;
     const message = [
       "Enviar comprovante de pagamento para processar/separar o pedido.",
