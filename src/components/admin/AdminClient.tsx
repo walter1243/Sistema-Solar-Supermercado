@@ -712,16 +712,17 @@ export default function AdminClient() {
                   <p className="mt-1 text-xs text-zinc-400">Selecione imagem do aparelho, categoria e publique no carrinho.</p>
                   <div className="mt-3 grid gap-2">
                     <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nome do produto" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
-                    <input value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder="Preco" type="number" step="0.01" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
+                    <div className="grid grid-cols-[1fr_130px] gap-2">
+                      <input value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder="Preco" type="number" step="0.01" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
+                      <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value as ProductUnit }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" aria-label="Unidade de medida">
+                        {productUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+                      </select>
+                    </div>
                     <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) handleImageFile(file, "product"); }} />
                     <button type="button" onClick={() => productImageInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"><ImagePlus size={16} /> Selecionar imagem</button>
                     {productForm.image ? <img src={productForm.image} alt="Preview" className="h-28 w-full rounded-xl object-cover" /> : null}
                     <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
-                    </select>
-                    <p className="text-xs font-semibold uppercase tracking-[0.08em] text-zinc-400">Unidade de medida</p>
-                    <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value as ProductUnit }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
-                      {productUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                     </select>
                     <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">Salvar Produto</button>
                   </div>
