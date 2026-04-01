@@ -79,6 +79,10 @@ function normalizePhone(phone: string) {
   return phone.replace(/\D/g, "");
 }
 
+function normalizeAdminUsername(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function mapAdminRow(row: Record<string, unknown> | undefined): AdminUser | null {
   if (!row) return null;
   return {
@@ -305,7 +309,8 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
 export async function getAdminProfile(username?: string): Promise<AdminUser> {
   await ensureSchema();
   if (username?.trim()) {
-    const { rows } = await sql`SELECT * FROM admin_users WHERE username = ${username.trim()} LIMIT 1;`;
+    const normalizedUsername = normalizeAdminUsername(username);
+    const { rows } = await sql`SELECT * FROM admin_users WHERE lower(username) = ${normalizedUsername} LIMIT 1;`;
     return mapAdminRow(rows[0]) || defaultAdmin;
   }
   const { rows } = await sql`SELECT * FROM admin_users WHERE id = 1 LIMIT 1;`;
@@ -314,26 +319,64 @@ export async function getAdminProfile(username?: string): Promise<AdminUser> {
 
 export async function getAdminProfileByUsername(username: string): Promise<AdminUser | null> {
   await ensureSchema();
-  const normalizedUsername = username.trim();
+  const normalizedUsername = normalizeAdminUsername(username);
   if (!normalizedUsername) return null;
-  const { rows } = await sql`SELECT * FROM admin_users WHERE username = ${normalizedUsername} LIMIT 1;`;
+  const { rows } = await sql`SELECT * FROM admin_users WHERE lower(username) = ${normalizedUsername} LIMIT 1;`;
   return mapAdminRow(rows[0]);
 }
 
 export async function saveAdminProfile(currentUsername: string, profile: AdminUser): Promise<AdminUser> {
   await ensureSchema();
+  const normalizedCurrentUsername = normalizeAdminUsername(currentUsername);
+  if (!normalizedCurrentUsername) {
+    throw new Error("Administrador invalido.");
+  }
+
+  const normalizedUsername = normalizeAdminUsername(profile.username || "");
+  if (!normalizedUsername) {
+    throw new Error("Informe um usuario valido.");
+  }
+
+  const name = profile.name.trim();
+  if (!name) {
+    throw new Error("Informe um nome valido.");
+  }
+
+  const password = (profile.password || "").trim() || "123456";
+
+  const { rows: duplicateRows } = await sql`
+    SELECT username
+    FROM admin_users
+    WHERE lower(username) = ${normalizedUsername}
+      AND lower(username) <> ${normalizedCurrentUsername}
+    LIMIT 1;
+  `;
+
+  if (duplicateRows.length > 0) {
+    throw new Error("Ja existe um administrador com esse usuario.");
+  }
+
   const next = {
     ...defaultAdmin,
     ...profile,
+    username: normalizedUsername,
+    name,
+    password,
   };
-  await sql`
+
+  const updateResult = await sql`
     UPDATE admin_users
     SET username = ${next.username},
         name = ${next.name},
         profile_image = ${next.profileImage || ""},
         password = ${next.password || "123456"}
-    WHERE username = ${currentUsername};
+    WHERE lower(username) = ${normalizedCurrentUsername};
   `;
+
+  if ((updateResult.rowCount || 0) === 0) {
+    throw new Error("Administrador nao encontrado para atualizacao.");
+  }
+
   return next;
 }
 
@@ -350,23 +393,26 @@ export async function createAdminUser(profile: AdminUser): Promise<AdminUser> {
     throw new Error("Limite de 3 administradores atingido.");
   }
 
-  const username = profile.username.trim();
+  const username = normalizeAdminUsername(profile.username || "");
   if (!username) {
     throw new Error("Informe um usuario para o administrador.");
   }
 
-  const duplicate = existingUsers.find((item) => item.username.toLowerCase() === username.toLowerCase());
+  const duplicate = existingUsers.find((item) => item.username.toLowerCase() === username);
   if (duplicate) {
     throw new Error("Ja existe um administrador com esse usuario.");
   }
 
   const nextId = existingUsers.reduce((maxId, item) => Math.max(maxId, item.id || 0), 0) + 1;
+  const name = profile.name.trim() || `Administrador ${nextId}`;
+  const password = profile.password?.trim() || "123456";
+
   const next: AdminUser = {
     id: nextId,
     username,
-    name: profile.name.trim() || `Administrador ${nextId}`,
+    name,
     profileImage: profile.profileImage || "",
-    password: profile.password?.trim() || "123456",
+    password,
   };
 
   await sql`

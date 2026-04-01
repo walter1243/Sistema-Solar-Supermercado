@@ -154,6 +154,7 @@ export default function AdminClient() {
   const [profileForm, setProfileForm] = useState({ name: "", username: "", password: "", profileImage: "" });
   const [adminAccounts, setAdminAccounts] = useState<AdminUser[]>([]);
   const [adminForm, setAdminForm] = useState({ name: "", username: "", password: "123456" });
+  const [isSavingAdminUser, setIsSavingAdminUser] = useState(false);
   const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
 
@@ -480,21 +481,30 @@ export default function AdminClient() {
 
   async function handleCreateAdminUser(event: React.FormEvent) {
     event.preventDefault();
+    if (isSavingAdminUser) return;
 
-    const result = await createAdminUserRemote({
-      name: adminForm.name,
-      username: adminForm.username,
-      password: adminForm.password,
-    });
+    setIsSavingAdminUser(true);
 
-    if (!result.user) {
-      setAdminNotice({ type: "error", text: result.error || "Falha ao criar administrador." });
-      return;
+    try {
+      const normalizedUsername = adminForm.username.trim().toLowerCase();
+
+      const result = await createAdminUserRemote({
+        name: adminForm.name,
+        username: normalizedUsername,
+        password: adminForm.password,
+      });
+
+      if (!result.user) {
+        setAdminNotice({ type: "error", text: result.error || "Falha ao criar administrador." });
+        return;
+      }
+
+      setAdminForm({ name: "", username: "", password: "123456" });
+      setAdminAccounts(await listAdminUsersRemote());
+      setAdminNotice({ type: "success", text: `Administrador @${result.user.username} criado com sucesso. Ja pode entrar no login com usuario e senha salvos.` });
+    } finally {
+      setIsSavingAdminUser(false);
     }
-
-    setAdminForm({ name: "", username: "", password: "123456" });
-    setAdminAccounts(await listAdminUsersRemote());
-    setAdminNotice({ type: "success", text: `Administrador @${result.user.username} criado com sucesso.` });
   }
 
   async function handleDeleteAdminUser(username: string) {
@@ -1309,22 +1319,25 @@ export default function AdminClient() {
                     value={adminForm.name}
                     onChange={(event) => setAdminForm((current) => ({ ...current, name: event.target.value }))}
                     placeholder="Nome do novo administrador"
+                    disabled={isSavingAdminUser}
                     className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
                   <input
                     value={adminForm.username}
                     onChange={(event) => setAdminForm((current) => ({ ...current, username: event.target.value }))}
                     placeholder="Usuario do novo administrador"
+                    disabled={isSavingAdminUser}
                     className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
                   <input
                     value={adminForm.password}
                     onChange={(event) => setAdminForm((current) => ({ ...current, password: event.target.value }))}
                     placeholder="Senha inicial"
+                    disabled={isSavingAdminUser}
                     className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
-                  <button type="submit" disabled={adminAccounts.length >= 3} className="flex items-center justify-center gap-2 rounded-xl bg-[#00AAFF] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-50">
-                    <UserPlus size={15} /> Adicionar administrador
+                  <button type="submit" disabled={adminAccounts.length >= 3 || isSavingAdminUser} className="flex items-center justify-center gap-2 rounded-xl bg-[#00AAFF] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-50">
+                    <UserPlus size={15} /> {isSavingAdminUser ? "Salvando..." : "Adicionar administrador"}
                   </button>
                 </form>
               </div>
