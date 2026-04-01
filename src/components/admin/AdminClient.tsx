@@ -1196,8 +1196,8 @@ export default function AdminClient() {
       </AnimatePresence>
 
       {profileOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/70 p-4" onClick={() => setProfileOpen(false)}>
-          <div className="mx-auto mt-8 w-full max-w-md rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4" onClick={(event) => event.stopPropagation()}>
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-4" onClick={() => setProfileOpen(false)}>
+          <div className="mx-auto mt-8 max-h-[calc(100vh-4rem)] w-full max-w-md overflow-y-auto rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4" onClick={(event) => event.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold">Perfil do Administrador</h3>
               <button type="button" onClick={() => setProfileOpen(false)} className="rounded-full border border-[#1A1A1A] p-1.5"><X size={15} /></button>
