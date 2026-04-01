@@ -116,6 +116,15 @@ function buildWhatsAppMessage(order: Order) {
   ].join("%0A");
 }
 
+function readFileAsDataUrl(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Falha ao ler arquivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function AdminClient() {
   const productImageInputRef = useRef<HTMLInputElement | null>(null);
   const profileImageInputRef = useRef<HTMLInputElement | null>(null);
@@ -155,6 +164,7 @@ export default function AdminClient() {
   const [adminAccounts, setAdminAccounts] = useState<AdminUser[]>([]);
   const [adminForm, setAdminForm] = useState({ name: "", username: "", password: "123456" });
   const [isSavingAdminUser, setIsSavingAdminUser] = useState(false);
+  const [isProcessingProductImage, setIsProcessingProductImage] = useState(false);
   const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
 
@@ -550,17 +560,29 @@ export default function AdminClient() {
     window.open(`https://wa.me/55${whatsapp}?text=${buildWhatsAppMessage(order)}`, "_blank", "noopener,noreferrer");
   }
 
-  function handleImageFile(file: File, target: "product" | "profile") {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result || "");
-      if (target === "product") {
-        setProductForm((current) => ({ ...current, image: result }));
-        return;
-      }
+  async function handleImageFile(file: File, target: "product" | "profile") {
+    if (target === "profile") {
+      const result = await readFileAsDataUrl(file);
       setProfileForm((current) => ({ ...current, profileImage: result }));
-    };
-    reader.readAsDataURL(file);
+      return;
+    }
+
+    setIsProcessingProductImage(true);
+    setAdminNotice({ type: "info", text: "Processando imagem e removendo fundo..." });
+
+    try {
+      const { removeBackground } = await import("@imgly/background-removal");
+      const outputBlob = await removeBackground(file);
+      const result = await readFileAsDataUrl(outputBlob);
+      setProductForm((current) => ({ ...current, image: result }));
+      setAdminNotice({ type: "success", text: "Imagem processada com fundo transparente." });
+    } catch {
+      const fallback = await readFileAsDataUrl(file);
+      setProductForm((current) => ({ ...current, image: fallback }));
+      setAdminNotice({ type: "error", text: "Nao foi possivel remover o fundo automaticamente. A imagem original foi carregada." });
+    } finally {
+      setIsProcessingProductImage(false);
+    }
   }
 
   function exportCustomersToPDF() {
@@ -847,8 +869,8 @@ export default function AdminClient() {
                         {productUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                       </select>
                     </div>
-                    <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) handleImageFile(file, "product"); }} />
-                    <button type="button" onClick={() => productImageInputRef.current?.click()} disabled={isAnyProductActionLoading} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><ImagePlus size={16} /> Selecionar imagem</button>
+                    <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleImageFile(file, "product"); }} />
+                    <button type="button" onClick={() => productImageInputRef.current?.click()} disabled={isAnyProductActionLoading || isProcessingProductImage} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><ImagePlus size={16} /> {isProcessingProductImage ? "Removendo fundo..." : "Selecionar imagem"}</button>
                     {productForm.image ? <img src={productForm.image} alt="Preview" className="h-28 w-full rounded-xl object-cover" /> : null}
                     <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} disabled={isAnyProductActionLoading} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
@@ -1218,7 +1240,7 @@ export default function AdminClient() {
                   {profileForm.profileImage ? <img src={profileForm.profileImage} alt={profileForm.name} className="h-full w-full object-cover" /> : <User size={22} />}
                 </div>
                 <div className="flex-1">
-                  <input ref={profileImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) handleImageFile(file, "profile"); }} />
+                  <input ref={profileImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleImageFile(file, "profile"); }} />
                   <button type="button" onClick={() => profileImageInputRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] py-2 text-sm"><ImagePlus size={15} /> Upload de imagem</button>
                 </div>
               </div>
