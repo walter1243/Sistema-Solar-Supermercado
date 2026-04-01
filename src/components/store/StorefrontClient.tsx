@@ -875,8 +875,8 @@ export default function StorefrontClient() {
               <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-2 gap-3">
                 {section.items.map((product) => (
                   <motion.article key={product.id} variants={itemVariants} whileHover={{ y: -5, scale: 1.01 }} className="group overflow-hidden rounded-2xl border border-[#1A1A1A] bg-[#080808] shadow-[0_6px_20px_rgba(0,0,0,0.35)]">
-                    <div className="relative">
-                      <img src={product.image} alt={product.name} className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105" loading="lazy" />
+                    <div className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-[#111111]">
+                      <img src={product.image} alt={product.name} className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105" loading="lazy" />
                       {quantityMap.get(product.id) ? <div className="absolute right-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black text-black">{quantityMap.get(product.id)} no carrinho</div> : null}
                     </div>
                     <div className="p-2.5">
