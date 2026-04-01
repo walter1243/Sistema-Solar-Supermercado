@@ -16,7 +16,7 @@ import {
   updateCustomerAccountRemote,
 } from "@/lib/api";
 import { AdminSettings, CartItem, CustomerAccount, CustomerProfile, Order, Product } from "@/types/domain";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useMotionValue } from "framer-motion";
 import {
   Copy,
   Download,
@@ -136,6 +136,10 @@ export default function StorefrontClient() {
   const [whatsAppDraftMessage, setWhatsAppDraftMessage] = useState("");
   const knownUnreadAlertIdsRef = useRef<Set<string>>(new Set());
   const alertBootstrapDoneRef = useRef(false);
+  const whatsappDragConstraintsRef = useRef<HTMLDivElement | null>(null);
+  const whatsappPositionInitializedRef = useRef(false);
+  const whatsappX = useMotionValue(0);
+  const whatsappY = useMotionValue(0);
   const [lastOrderId, setLastOrderId] = useState<string | null>(null);
   const [lastPixOrder, setLastPixOrder] = useState<Order | null>(null);
   const [pixFlowOpen, setPixFlowOpen] = useState(false);
@@ -319,6 +323,34 @@ export default function StorefrontClient() {
   const missingForDelivery = Math.max(0, deliveryMinimum - total);
   const isPickupUnlocked = total >= pickupMinimum;
   const missingForPickup = Math.max(0, pickupMinimum - total);
+
+  useEffect(() => {
+    const BUTTON_SIZE = 56;
+    const EDGE_MARGIN = 12;
+    const BOTTOM_CLEARANCE = 110;
+
+    function positionWhatsAppBubble() {
+      const maxX = Math.max(EDGE_MARGIN, window.innerWidth - BUTTON_SIZE - EDGE_MARGIN);
+      const maxY = Math.max(EDGE_MARGIN, window.innerHeight - BUTTON_SIZE - EDGE_MARGIN);
+      const preferredY = Math.max(EDGE_MARGIN, window.innerHeight - BUTTON_SIZE - BOTTOM_CLEARANCE);
+
+      if (!whatsappPositionInitializedRef.current) {
+        whatsappX.set(maxX);
+        whatsappY.set(preferredY);
+        whatsappPositionInitializedRef.current = true;
+        return;
+      }
+
+      const clampedX = Math.min(Math.max(whatsappX.get(), EDGE_MARGIN), maxX);
+      const clampedY = Math.min(Math.max(whatsappY.get(), EDGE_MARGIN), maxY);
+      whatsappX.set(clampedX);
+      whatsappY.set(clampedY);
+    }
+
+    positionWhatsAppBubble();
+    window.addEventListener("resize", positionWhatsAppBubble);
+    return () => window.removeEventListener("resize", positionWhatsAppBubble);
+  }, [whatsappX, whatsappY]);
 
   useEffect(() => {
     if (!isDeliveryUnlocked && fulfillmentMethod === "entrega") {
@@ -1115,19 +1147,26 @@ export default function StorefrontClient() {
       <AnimatePresence>
         {Boolean(settings.whatsappNumber.replace(/\D/g, "")) ? (
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            className="fixed bottom-24 right-4 z-40"
+            ref={whatsappDragConstraintsRef}
+            className="pointer-events-none fixed inset-0 z-40"
           >
-            <button
+            <motion.button
               type="button"
               onClick={openCompanyWhatsApp}
-              className="grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
+              drag
+              dragConstraints={whatsappDragConstraintsRef}
+              dragMomentum={false}
+              dragElastic={0.08}
+              style={{ x: whatsappX, y: whatsappY }}
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.85 }}
+              whileTap={{ scale: 0.94 }}
+              className="pointer-events-auto absolute grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-black shadow-[0_0_30px_rgba(37,211,102,0.4)] hover:shadow-[0_0_40px_rgba(37,211,102,0.6)] hover:scale-110 transition-all"
               aria-label="Abrir WhatsApp"
             >
               <MessageCircle size={24} />
-            </button>
+            </motion.button>
           </motion.div>
         ) : null}
       </AnimatePresence>
