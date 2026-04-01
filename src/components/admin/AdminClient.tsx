@@ -5,6 +5,7 @@ import {
   createAdminUserRemote,
   clearAdminSessionRemote,
   createProduct,
+  deleteProductRemote,
   deleteAdminUserRemote,
   getAdminSessionRemote,
   getAdminSettingsRemote,
@@ -18,6 +19,7 @@ import {
   saveAdminProfileRemote,
   saveAdminSettingsRemote,
   sendCustomerAlertRemote,
+  updateProductRemote,
   updateOrderStatusRemote,
 } from "@/lib/api";
 import { AdminSettings, AdminUser, CustomerAccount, DashboardSummary, Order, Product } from "@/types/domain";
@@ -42,6 +44,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  Pencil,
   Trash2,
 } from "lucide-react";
 import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
@@ -139,6 +142,8 @@ export default function AdminClient() {
     cashbackRewardValue: 0,
   });
   const [productForm, setProductForm] = useState<ProductFormState>(initialProduct);
+  const [productSearch, setProductSearch] = useState("");
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [newCategory, setNewCategory] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({ name: "", username: "", password: "", profileImage: "" });
@@ -202,6 +207,15 @@ export default function AdminClient() {
   }, [orders]);
 
   const selectedOrder = useMemo(() => orders.find((order) => order.id === selectedOrderId) || null, [orders, selectedOrderId]);
+
+  const filteredProducts = useMemo(() => {
+    const query = productSearch.trim().toLowerCase();
+    if (!query) return products;
+    return products.filter((product) => {
+      const searchable = `${product.name} ${product.category} ${product.unit}`.toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [productSearch, products]);
 
   const uniqueCustomers = useMemo(() => {
     const normalizePhone = (value: string) => value.replace(/\D/g, "");
@@ -278,23 +292,67 @@ export default function AdminClient() {
     setMenuOpen(false);
   }
 
-  async function handleCreateProduct(event: React.FormEvent) {
+  async function handleSaveProduct(event: React.FormEvent) {
     event.preventDefault();
     if (!productForm.name || !productForm.price) return;
 
     const product: Product = {
-      id: crypto.randomUUID(),
+      id: editingProductId || crypto.randomUUID(),
       name: productForm.name,
       price: Number(productForm.price),
       image: productForm.image || "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=640&q=80",
       category: productForm.category,
       unit: productForm.unit,
-      createdAt: new Date().toISOString(),
+      createdAt: editingProductId
+        ? products.find((item) => item.id === editingProductId)?.createdAt || new Date().toISOString()
+        : new Date().toISOString(),
     };
 
-    await createProduct(product);
-    setAdminNotice({ type: "success", text: "Produto cadastrado com sucesso e disponivel na loja." });
+    if (editingProductId) {
+      await updateProductRemote(product);
+      setAdminNotice({ type: "success", text: "Produto atualizado com sucesso." });
+    } else {
+      await createProduct(product);
+      setAdminNotice({ type: "success", text: "Produto cadastrado com sucesso e disponivel na loja." });
+    }
+
+    setEditingProductId(null);
     setProductForm({ ...initialProduct, category: settings.categories[0] || "Mercearia" });
+    void refreshAll();
+  }
+
+  function handleEditProduct(product: Product) {
+    setEditingProductId(product.id);
+    setProductForm({
+      name: product.name,
+      price: String(product.price),
+      image: product.image,
+      category: product.category,
+      unit: product.unit,
+    });
+    setAdminNotice({ type: "info", text: `Editando produto: ${product.name}.` });
+  }
+
+  function handleCancelProductEdit() {
+    setEditingProductId(null);
+    setProductForm({ ...initialProduct, category: settings.categories[0] || "Mercearia" });
+  }
+
+  async function handleDeleteProduct(product: Product) {
+    const confirmed = window.confirm(`Deseja excluir o produto \"${product.name}\"?`);
+    if (!confirmed) return;
+
+    const deleted = await deleteProductRemote(product.id);
+    if (!deleted) {
+      setAdminNotice({ type: "error", text: "Nao foi possivel excluir o produto." });
+      return;
+    }
+
+    if (editingProductId === product.id) {
+      handleCancelProductEdit();
+    }
+
+    setAdminNotice({ type: "success", text: `Produto ${product.name} excluido com sucesso.` });
     void refreshAll();
   }
 
@@ -707,9 +765,20 @@ export default function AdminClient() {
 
             {activeTab === "produtos" && (
               <section className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
-                <form onSubmit={handleCreateProduct} className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
-                  <h2 className="text-lg font-bold">Cadastro de Produto</h2>
-                  <p className="mt-1 text-xs text-zinc-400">Selecione imagem do aparelho, categoria e publique no carrinho.</p>
+                <form onSubmit={handleSaveProduct} className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-lg font-bold">{editingProductId ? "Editar Produto" : "Cadastro de Produto"}</h2>
+                    {editingProductId ? (
+                      <button
+                        type="button"
+                        onClick={handleCancelProductEdit}
+                        className="rounded-lg border border-[#1A1A1A] px-2 py-1 text-xs text-zinc-300"
+                      >
+                        Cancelar edicao
+                      </button>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-xs text-zinc-400">Selecione imagem do produto, categoria e publique no carrinho.</p>
                   <div className="mt-3 grid gap-2">
                     <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nome do produto" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
                     <div className="grid grid-cols-[1fr_130px] gap-2">
@@ -724,7 +793,7 @@ export default function AdminClient() {
                     <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
                     </select>
-                    <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">Salvar Produto</button>
+                    <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">{editingProductId ? "Atualizar Produto" : "Salvar Produto"}</button>
                   </div>
                 </form>
                 <div className="space-y-4">
@@ -749,6 +818,52 @@ export default function AdminClient() {
                           </button>
                         </div>
                       ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
+                    <h2 className="text-lg font-bold">Produtos cadastrados</h2>
+                    <div className="mt-3">
+                      <input
+                        value={productSearch}
+                        onChange={(event) => setProductSearch(event.target.value)}
+                        placeholder="Pesquisar por nome, categoria ou unidade"
+                        className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                      />
+                    </div>
+
+                    <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                      {filteredProducts.length === 0 ? (
+                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto encontrado.</p>
+                      ) : (
+                        filteredProducts.map((product) => (
+                          <article key={product.id} className="rounded-xl border border-[#1A1A1A] bg-black/60 p-2">
+                            <div className="flex items-center gap-2">
+                              <img src={product.image} alt={product.name} className="h-12 w-12 rounded-lg object-cover" />
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">{product.name}</p>
+                                <p className="text-xs text-zinc-400">{product.category} • {product.unit} • {formatCurrency(product.price)}</p>
+                              </div>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleEditProduct(product)}
+                                className="flex items-center justify-center gap-1 rounded-lg border border-[#00AAFF] px-2 py-1 text-xs text-[#00AAFF]"
+                              >
+                                <Pencil size={12} /> Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteProduct(product)}
+                                className="flex items-center justify-center gap-1 rounded-lg border border-red-500/60 px-2 py-1 text-xs text-red-300"
+                              >
+                                <Trash2 size={12} /> Excluir
+                              </button>
+                            </div>
+                          </article>
+                        ))
+                      )}
                     </div>
                   </div>
                 </div>

@@ -46,6 +46,25 @@ export async function createProduct(product: Product): Promise<Product> {
   return remote || product;
 }
 
+export async function updateProductRemote(product: Product): Promise<Product> {
+  const remote = unwrapData<Product>(
+    await apiFetch<unknown>("/api/products", {
+      method: "PUT",
+      body: JSON.stringify(product),
+    }),
+  );
+  return remote || product;
+}
+
+export async function deleteProductRemote(productId: string): Promise<boolean> {
+  const response = await apiFetch<{ success?: boolean }>("/api/products", {
+    method: "DELETE",
+    body: JSON.stringify({ id: productId }),
+  });
+  if (!response) return false;
+  return Boolean(response.success);
+}
+
 export async function getAdminSettingsRemote(): Promise<AdminSettings> {
   const remote = unwrapData<AdminSettings>(await apiFetch<unknown>("/api/settings", { method: "GET" }));
   return remote || {
