@@ -102,6 +102,10 @@ function getSectionName(rawCategory: string) {
 }
 
 export default function StorefrontClient() {
+  const WHATSAPP_BUTTON_SIZE = 56;
+  const WHATSAPP_EDGE_MARGIN = 12;
+  const WHATSAPP_BOTTOM_CLEARANCE = 110;
+
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [settings, setSettings] = useState<AdminSettings>({
@@ -324,27 +328,49 @@ export default function StorefrontClient() {
   const isPickupUnlocked = total >= pickupMinimum;
   const missingForPickup = Math.max(0, pickupMinimum - total);
 
-  useEffect(() => {
-    const BUTTON_SIZE = 56;
-    const EDGE_MARGIN = 12;
-    const BOTTOM_CLEARANCE = 110;
+  function getWhatsAppCornerTargets() {
+    const maxX = Math.max(WHATSAPP_EDGE_MARGIN, window.innerWidth - WHATSAPP_BUTTON_SIZE - WHATSAPP_EDGE_MARGIN);
+    const maxY = Math.max(
+      WHATSAPP_EDGE_MARGIN,
+      window.innerHeight - WHATSAPP_BUTTON_SIZE - Math.max(WHATSAPP_EDGE_MARGIN, WHATSAPP_BOTTOM_CLEARANCE),
+    );
 
+    return [
+      { x: WHATSAPP_EDGE_MARGIN, y: WHATSAPP_EDGE_MARGIN },
+      { x: maxX, y: WHATSAPP_EDGE_MARGIN },
+      { x: WHATSAPP_EDGE_MARGIN, y: maxY },
+      { x: maxX, y: maxY },
+    ];
+  }
+
+  function snapWhatsAppToNearestCorner() {
+    const corners = getWhatsAppCornerTargets();
+    const currentX = whatsappX.get();
+    const currentY = whatsappY.get();
+
+    const nearest = corners.reduce((best, corner) => {
+      const currentDistance = Math.hypot(currentX - corner.x, currentY - corner.y);
+      const bestDistance = Math.hypot(currentX - best.x, currentY - best.y);
+      return currentDistance < bestDistance ? corner : best;
+    }, corners[0]);
+
+    whatsappX.set(nearest.x);
+    whatsappY.set(nearest.y);
+  }
+
+  useEffect(() => {
     function positionWhatsAppBubble() {
-      const maxX = Math.max(EDGE_MARGIN, window.innerWidth - BUTTON_SIZE - EDGE_MARGIN);
-      const maxY = Math.max(EDGE_MARGIN, window.innerHeight - BUTTON_SIZE - EDGE_MARGIN);
-      const preferredY = Math.max(EDGE_MARGIN, window.innerHeight - BUTTON_SIZE - BOTTOM_CLEARANCE);
+      const corners = getWhatsAppCornerTargets();
+      const bottomRight = corners[3];
 
       if (!whatsappPositionInitializedRef.current) {
-        whatsappX.set(maxX);
-        whatsappY.set(preferredY);
+        whatsappX.set(bottomRight.x);
+        whatsappY.set(bottomRight.y);
         whatsappPositionInitializedRef.current = true;
         return;
       }
 
-      const clampedX = Math.min(Math.max(whatsappX.get(), EDGE_MARGIN), maxX);
-      const clampedY = Math.min(Math.max(whatsappY.get(), EDGE_MARGIN), maxY);
-      whatsappX.set(clampedX);
-      whatsappY.set(clampedY);
+      snapWhatsAppToNearestCorner();
     }
 
     positionWhatsAppBubble();
@@ -694,7 +720,7 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="grid h-11 w-28 place-items-center rounded-xl border border-[#1A1A1A] bg-black px-1.5"
+            className="grid h-12 w-32 place-items-center rounded-xl border border-[#1A1A1A] bg-black px-2"
             aria-label="Abrir categorias"
           >
             <Image
@@ -703,7 +729,7 @@ export default function StorefrontClient() {
               width={173}
               height={55}
               priority
-              className="h-7 w-auto max-w-full object-contain"
+              className="h-8 w-auto max-w-full object-contain"
             />
           </button>
 
@@ -1158,6 +1184,7 @@ export default function StorefrontClient() {
               dragMomentum={false}
               dragElastic={0.08}
               style={{ x: whatsappX, y: whatsappY }}
+              onDragEnd={snapWhatsAppToNearestCorner}
               initial={{ opacity: 0, scale: 0.85 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.85 }}
