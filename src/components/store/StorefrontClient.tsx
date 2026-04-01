@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   clearCustomerSessionRemote,
   getCustomerSessionRemote,
@@ -661,13 +662,16 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="grid h-12 w-28 place-items-center overflow-hidden rounded-xl border border-[#1A1A1A] bg-black px-1"
+            className="grid h-12 w-32 place-items-center rounded-xl border border-[#1A1A1A] bg-black px-2"
             aria-label="Abrir categorias"
           >
-            <img
-              src="/nova%20logo%20solar%20AMRELO.svg"
+            <Image
+              src="/image-removebg-preview.png"
               alt="Solar Supermercado"
-              className="block h-full w-full object-contain"
+              width={173}
+              height={55}
+              priority
+              className="h-8 w-auto object-contain"
             />
           </button>
 
