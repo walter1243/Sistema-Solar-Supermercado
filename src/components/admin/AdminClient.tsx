@@ -89,6 +89,7 @@ const initialProduct: ProductFormState = {
 };
 
 const productUnits: ProductUnit[] = ["und", "cx", "kg", "pact", "fardo"];
+const PRODUCTS_PER_PAGE = 6;
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -143,7 +144,11 @@ export default function AdminClient() {
   });
   const [productForm, setProductForm] = useState<ProductFormState>(initialProduct);
   const [productSearch, setProductSearch] = useState("");
+  const [productCategoryFilter, setProductCategoryFilter] = useState("todas");
+  const [currentProductsPage, setCurrentProductsPage] = useState(1);
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
   const [newCategory, setNewCategory] = useState("");
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [profileForm, setProfileForm] = useState({ name: "", username: "", password: "", profileImage: "" });
@@ -210,12 +215,44 @@ export default function AdminClient() {
 
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
-    if (!query) return products;
     return products.filter((product) => {
+      const matchesCategory = productCategoryFilter === "todas" || product.category === productCategoryFilter;
+      if (!matchesCategory) return false;
+      if (!query) return true;
       const searchable = `${product.name} ${product.category} ${product.unit}`.toLowerCase();
       return searchable.includes(query);
     });
-  }, [productSearch, products]);
+  }, [productSearch, productCategoryFilter, products]);
+
+  const totalProductsPages = useMemo(() => {
+    return Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
+  }, [filteredProducts.length]);
+
+  const paginatedProducts = useMemo(() => {
+    const start = (currentProductsPage - 1) * PRODUCTS_PER_PAGE;
+    return filteredProducts.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [currentProductsPage, filteredProducts]);
+
+  useEffect(() => {
+    setCurrentProductsPage(1);
+  }, [productSearch, productCategoryFilter]);
+
+  useEffect(() => {
+    setCurrentProductsPage((current) => Math.min(current, totalProductsPages));
+  }, [totalProductsPages]);
+
+  const productsStart = filteredProducts.length === 0 ? 0 : (currentProductsPage - 1) * PRODUCTS_PER_PAGE + 1;
+  const productsEnd = Math.min(currentProductsPage * PRODUCTS_PER_PAGE, filteredProducts.length);
+
+  const isAnyProductActionLoading = isSavingProduct || Boolean(deletingProductId);
+
+  const productSubmitLabel = isSavingProduct
+    ? editingProductId
+      ? "Atualizando..."
+      : "Salvando..."
+    : editingProductId
+      ? "Atualizar Produto"
+      : "Salvar Produto";
 
   const uniqueCustomers = useMemo(() => {
     const normalizePhone = (value: string) => value.replace(/\D/g, "");
@@ -294,7 +331,9 @@ export default function AdminClient() {
 
   async function handleSaveProduct(event: React.FormEvent) {
     event.preventDefault();
-    if (!productForm.name || !productForm.price) return;
+    if (!productForm.name || !productForm.price || isSavingProduct) return;
+
+    setIsSavingProduct(true);
 
     const product: Product = {
       id: editingProductId || crypto.randomUUID(),
@@ -308,17 +347,21 @@ export default function AdminClient() {
         : new Date().toISOString(),
     };
 
-    if (editingProductId) {
-      await updateProductRemote(product);
-      setAdminNotice({ type: "success", text: "Produto atualizado com sucesso." });
-    } else {
-      await createProduct(product);
-      setAdminNotice({ type: "success", text: "Produto cadastrado com sucesso e disponivel na loja." });
-    }
+    try {
+      if (editingProductId) {
+        await updateProductRemote(product);
+        setAdminNotice({ type: "success", text: "Produto atualizado com sucesso." });
+      } else {
+        await createProduct(product);
+        setAdminNotice({ type: "success", text: "Produto cadastrado com sucesso e disponivel na loja." });
+      }
 
-    setEditingProductId(null);
-    setProductForm({ ...initialProduct, category: settings.categories[0] || "Mercearia" });
-    void refreshAll();
+      setEditingProductId(null);
+      setProductForm({ ...initialProduct, category: settings.categories[0] || "Mercearia" });
+      await refreshAll();
+    } finally {
+      setIsSavingProduct(false);
+    }
   }
 
   function handleEditProduct(product: Product) {
@@ -339,21 +382,27 @@ export default function AdminClient() {
   }
 
   async function handleDeleteProduct(product: Product) {
+    if (deletingProductId) return;
     const confirmed = window.confirm(`Deseja excluir o produto \"${product.name}\"?`);
     if (!confirmed) return;
 
-    const deleted = await deleteProductRemote(product.id);
-    if (!deleted) {
-      setAdminNotice({ type: "error", text: "Nao foi possivel excluir o produto." });
-      return;
-    }
+    setDeletingProductId(product.id);
+    try {
+      const deleted = await deleteProductRemote(product.id);
+      if (!deleted) {
+        setAdminNotice({ type: "error", text: "Nao foi possivel excluir o produto." });
+        return;
+      }
 
-    if (editingProductId === product.id) {
-      handleCancelProductEdit();
-    }
+      if (editingProductId === product.id) {
+        handleCancelProductEdit();
+      }
 
-    setAdminNotice({ type: "success", text: `Produto ${product.name} excluido com sucesso.` });
-    void refreshAll();
+      setAdminNotice({ type: "success", text: `Produto ${product.name} excluido com sucesso.` });
+      await refreshAll();
+    } finally {
+      setDeletingProductId(null);
+    }
   }
 
   function handleAddCategory() {
@@ -772,6 +821,7 @@ export default function AdminClient() {
                       <button
                         type="button"
                         onClick={handleCancelProductEdit}
+                        disabled={isAnyProductActionLoading}
                         className="rounded-lg border border-[#1A1A1A] px-2 py-1 text-xs text-zinc-300"
                       >
                         Cancelar edicao
@@ -780,20 +830,20 @@ export default function AdminClient() {
                   </div>
                   <p className="mt-1 text-xs text-zinc-400">Selecione imagem do produto, categoria e publique no carrinho.</p>
                   <div className="mt-3 grid gap-2">
-                    <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nome do produto" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
+                    <input value={productForm.name} onChange={(event) => setProductForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nome do produto" disabled={isAnyProductActionLoading} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60" />
                     <div className="grid grid-cols-[1fr_130px] gap-2">
-                      <input value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder="Preco" type="number" step="0.01" className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
-                      <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value as ProductUnit }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" aria-label="Unidade de medida">
+                      <input value={productForm.price} onChange={(event) => setProductForm((current) => ({ ...current, price: event.target.value }))} placeholder="Preco" type="number" step="0.01" disabled={isAnyProductActionLoading} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60" />
+                      <select value={productForm.unit} onChange={(event) => setProductForm((current) => ({ ...current, unit: event.target.value as ProductUnit }))} disabled={isAnyProductActionLoading} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60" aria-label="Unidade de medida">
                         {productUnits.map((unit) => <option key={unit} value={unit}>{unit}</option>)}
                       </select>
                     </div>
                     <input ref={productImageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) handleImageFile(file, "product"); }} />
-                    <button type="button" onClick={() => productImageInputRef.current?.click()} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"><ImagePlus size={16} /> Selecionar imagem</button>
+                    <button type="button" onClick={() => productImageInputRef.current?.click()} disabled={isAnyProductActionLoading} className="flex items-center justify-center gap-2 rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60"><ImagePlus size={16} /> Selecionar imagem</button>
                     {productForm.image ? <img src={productForm.image} alt="Preview" className="h-28 w-full rounded-xl object-cover" /> : null}
-                    <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm">
+                    <select value={productForm.category} onChange={(event) => setProductForm((current) => ({ ...current, category: event.target.value }))} disabled={isAnyProductActionLoading} className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
                       {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
                     </select>
-                    <button type="submit" className="rounded-xl bg-[#B2FF00] py-2 font-black text-black">{editingProductId ? "Atualizar Produto" : "Salvar Produto"}</button>
+                    <button type="submit" disabled={isAnyProductActionLoading} className="rounded-xl bg-[#B2FF00] py-2 font-black text-black disabled:cursor-not-allowed disabled:opacity-70">{productSubmitLabel}</button>
                   </div>
                 </form>
                 <div className="space-y-4">
@@ -823,20 +873,29 @@ export default function AdminClient() {
 
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
                     <h2 className="text-lg font-bold">Produtos cadastrados</h2>
-                    <div className="mt-3">
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_170px]">
                       <input
                         value={productSearch}
                         onChange={(event) => setProductSearch(event.target.value)}
                         placeholder="Pesquisar por nome, categoria ou unidade"
                         className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                       />
+                      <select
+                        value={productCategoryFilter}
+                        onChange={(event) => setProductCategoryFilter(event.target.value)}
+                        className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                        aria-label="Filtrar produtos por categoria"
+                      >
+                        <option value="todas">Todas categorias</option>
+                        {settings.categories.map((category) => <option key={category} value={category}>{category}</option>)}
+                      </select>
                     </div>
 
                     <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
-                      {filteredProducts.length === 0 ? (
+                      {paginatedProducts.length === 0 ? (
                         <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto encontrado.</p>
                       ) : (
-                        filteredProducts.map((product) => (
+                        paginatedProducts.map((product) => (
                           <article key={product.id} className="rounded-xl border border-[#1A1A1A] bg-black/60 p-2">
                             <div className="flex items-center gap-2">
                               <img src={product.image} alt={product.name} className="h-12 w-12 rounded-lg object-cover" />
@@ -849,21 +908,50 @@ export default function AdminClient() {
                               <button
                                 type="button"
                                 onClick={() => handleEditProduct(product)}
-                                className="flex items-center justify-center gap-1 rounded-lg border border-[#00AAFF] px-2 py-1 text-xs text-[#00AAFF]"
+                                disabled={isAnyProductActionLoading}
+                                className="flex items-center justify-center gap-1 rounded-lg border border-[#00AAFF] px-2 py-1 text-xs text-[#00AAFF] disabled:cursor-not-allowed disabled:opacity-60"
                               >
                                 <Pencil size={12} /> Editar
                               </button>
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteProduct(product)}
-                                className="flex items-center justify-center gap-1 rounded-lg border border-red-500/60 px-2 py-1 text-xs text-red-300"
+                                disabled={isAnyProductActionLoading}
+                                className="flex items-center justify-center gap-1 rounded-lg border border-red-500/60 px-2 py-1 text-xs text-red-300 disabled:cursor-not-allowed disabled:opacity-60"
                               >
-                                <Trash2 size={12} /> Excluir
+                                <Trash2 size={12} /> {deletingProductId === product.id ? "Excluindo..." : "Excluir"}
                               </button>
                             </div>
                           </article>
                         ))
                       )}
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 text-xs text-zinc-400">
+                      <p>
+                        Mostrando {productsStart}-{productsEnd} de {filteredProducts.length}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCurrentProductsPage((current) => Math.max(1, current - 1))}
+                          disabled={currentProductsPage <= 1}
+                          className="rounded-lg border border-[#1A1A1A] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Anterior
+                        </button>
+                        <span>
+                          Pagina {currentProductsPage} de {totalProductsPages}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentProductsPage((current) => Math.min(totalProductsPages, current + 1))}
+                          disabled={currentProductsPage >= totalProductsPages}
+                          className="rounded-lg border border-[#1A1A1A] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Proxima
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
