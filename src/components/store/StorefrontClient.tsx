@@ -720,7 +720,7 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="grid h-12 w-32 place-items-center rounded-xl border border-[#1A1A1A] bg-black px-2"
+            className="flex h-12 w-36 items-center justify-center bg-transparent px-0"
             aria-label="Abrir categorias"
           >
             <Image
@@ -729,7 +729,7 @@ export default function StorefrontClient() {
               width={173}
               height={55}
               priority
-              className="h-8 w-auto max-w-full object-contain"
+              className="h-11 w-auto max-w-full object-contain"
             />
           </button>
 
