@@ -169,6 +169,11 @@ export default function AdminClient() {
   const [isProductImageDropActive, setIsProductImageDropActive] = useState(false);
   const [adminNotice, setAdminNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
+  const [promotionSearch, setPromotionSearch] = useState("");
+  const [promotionDraftProductIds, setPromotionDraftProductIds] = useState<string[]>([]);
+  const [promotionPriceEditProductId, setPromotionPriceEditProductId] = useState<string | null>(null);
+  const [promotionPriceEditValue, setPromotionPriceEditValue] = useState("");
+  const [isLaunchingPromotion, setIsLaunchingPromotion] = useState(false);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -201,6 +206,10 @@ export default function AdminClient() {
       return () => clearTimeout(timer);
     }
   }, [adminNotice]);
+
+  useEffect(() => {
+    setPromotionDraftProductIds(settings.promotionProductIds || []);
+  }, [settings.promotionProductIds]);
 
   async function refreshAll() {
     setProducts(await getProductsCatalog());
@@ -238,10 +247,19 @@ export default function AdminClient() {
   }, [productSearch, productCategoryFilter, products]);
 
   const promotionProductSet = useMemo(() => new Set(settings.promotionProductIds || []), [settings.promotionProductIds]);
+  const promotionDraftSet = useMemo(() => new Set(promotionDraftProductIds), [promotionDraftProductIds]);
   const promotionProducts = useMemo(
-    () => products.filter((product) => promotionProductSet.has(product.id)),
-    [products, promotionProductSet],
+    () => products.filter((product) => promotionDraftSet.has(product.id)),
+    [products, promotionDraftSet],
   );
+  const promotionAvailableProducts = useMemo(() => {
+    const query = promotionSearch.trim().toLowerCase();
+    return products.filter((product) => {
+      if (promotionDraftSet.has(product.id)) return false;
+      if (!query) return true;
+      return product.name.toLowerCase().includes(query);
+    });
+  }, [products, promotionDraftSet, promotionSearch]);
 
   const totalProductsPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
@@ -439,26 +457,54 @@ export default function AdminClient() {
     }
   }
 
-  async function handleTogglePromotionProduct(productId: string) {
-    const isInPromotion = promotionProductSet.has(productId);
+  function handleAddPromotionDraftProduct(productId: string) {
+    setPromotionDraftProductIds((current) => (current.includes(productId) ? current : [...current, productId]));
+  }
+
+  function handleRemovePromotionDraftProduct(productId: string) {
+    setPromotionDraftProductIds((current) => current.filter((id) => id !== productId));
+    if (promotionPriceEditProductId === productId) {
+      setPromotionPriceEditProductId(null);
+      setPromotionPriceEditValue("");
+    }
+  }
+
+  function handleStartPromotionPriceEdit(product: Product) {
+    setPromotionPriceEditProductId(product.id);
+    setPromotionPriceEditValue(String(product.price));
+  }
+
+  async function handleSavePromotionPrice(product: Product) {
+    const nextPrice = Number(promotionPriceEditValue);
+    if (!Number.isFinite(nextPrice) || nextPrice <= 0) {
+      setAdminNotice({ type: "error", text: "Informe um preco valido para o produto." });
+      return;
+    }
+
+    await updateProductRemote({ ...product, price: nextPrice });
+    setPromotionPriceEditProductId(null);
+    setPromotionPriceEditValue("");
+    await refreshAll();
+    setAdminNotice({ type: "success", text: `Preco de ${product.name} atualizado para ${formatCurrency(nextPrice)}.` });
+  }
+
+  async function handleLaunchPromotion() {
+    if (isLaunchingPromotion) return;
+    setIsLaunchingPromotion(true);
+
     const nextSettings = {
       ...settings,
-      promotionProductIds: isInPromotion
-        ? settings.promotionProductIds.filter((id) => id !== productId)
-        : [...settings.promotionProductIds, productId],
+      promotionProductIds: promotionDraftProductIds,
     };
-
-    setSettings(nextSettings);
 
     try {
       const saved = await saveAdminSettingsRemote(nextSettings);
       setSettings(saved);
-      setAdminNotice({
-        type: "success",
-        text: isInPromotion ? "Produto removido da promocao." : "Produto adicionado na promocao.",
-      });
+      setAdminNotice({ type: "success", text: "Promocao lancada com sucesso na loja." });
     } catch {
-      setAdminNotice({ type: "error", text: "Nao foi possivel atualizar a lista de promocao." });
+      setAdminNotice({ type: "error", text: "Nao foi possivel lancar a promocao agora." });
+    } finally {
+      setIsLaunchingPromotion(false);
     }
   }
 
@@ -989,29 +1035,102 @@ export default function AdminClient() {
 
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
                     <h2 className="text-lg font-bold">Promocao</h2>
-                    <p className="mt-1 text-xs text-zinc-400">Selecione os produtos que devem aparecer na categoria Promocao da loja.</p>
-                    <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
-                      {products.length === 0 ? (
-                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Cadastre produtos para montar a promocao.</p>
+                    <p className="mt-1 text-xs text-zinc-400">Monte a promocao antes de publicar na loja.</p>
+                    <input
+                      value={promotionSearch}
+                      onChange={(event) => setPromotionSearch(event.target.value)}
+                      placeholder="Buscar produto para promocao"
+                      className="mt-3 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                    />
+
+                    <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+                      {promotionAvailableProducts.length === 0 ? (
+                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto disponivel para adicionar.</p>
                       ) : (
-                        products.map((product) => {
-                          const selected = promotionProductSet.has(product.id);
+                        promotionAvailableProducts.map((product) => (
+                          <div key={product.id} className="flex items-center gap-2 rounded-xl border border-[#1A1A1A] bg-black/60 px-2 py-2 text-sm">
+                            <img src={product.image} alt={product.name} className="h-9 w-9 rounded-lg object-cover" />
+                            <span className="line-clamp-1 flex-1">{product.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleAddPromotionDraftProduct(product.id)}
+                              className="rounded-lg border border-[#00AAFF] px-2 py-1 text-xs text-[#00AAFF]"
+                            >
+                              Adicionar
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <p className="mt-3 text-xs font-semibold text-zinc-300">Produtos selecionados</p>
+                    <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
+                      {promotionProducts.length === 0 ? (
+                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto na lista de promocao.</p>
+                      ) : (
+                        promotionProducts.map((product) => {
+                          const editingPrice = promotionPriceEditProductId === product.id;
                           return (
-                            <label key={product.id} className={`flex items-center gap-2 rounded-xl border px-2 py-2 text-sm ${selected ? "border-[#B2FF00] bg-[#B2FF00]/10" : "border-[#1A1A1A] bg-black/50"}`}>
-                              <input
-                                type="checkbox"
-                                checked={selected}
-                                onChange={() => void handleTogglePromotionProduct(product.id)}
-                                className="h-4 w-4 accent-[#B2FF00]"
-                              />
-                              <img src={product.image} alt={product.name} className="h-9 w-9 rounded-lg object-cover" />
-                              <span className="line-clamp-1 flex-1">{product.name}</span>
-                            </label>
+                            <div key={product.id} className="rounded-xl border border-[#1A1A1A] bg-black/60 px-2 py-2 text-sm">
+                              <div className="flex items-center gap-2">
+                                <img src={product.image} alt={product.name} className="h-9 w-9 rounded-lg object-cover" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="line-clamp-1">{product.name}</p>
+                                  <p className="text-xs text-[#B2FF00]">{formatCurrency(product.price)}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemovePromotionDraftProduct(product.id)}
+                                  className="grid h-8 w-8 place-items-center rounded-lg border border-red-500/60 text-red-300"
+                                  aria-label={`Remover ${product.name} da promocao`}
+                                  title="Remover da promocao"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartPromotionPriceEdit(product)}
+                                  className="grid h-8 w-8 place-items-center rounded-lg border border-[#00AAFF] text-[#00AAFF]"
+                                  aria-label={`Editar preco de ${product.name}`}
+                                  title="Editar preco"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              </div>
+
+                              {editingPrice ? (
+                                <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                                  <input
+                                    type="number"
+                                    min="0.01"
+                                    step="0.01"
+                                    value={promotionPriceEditValue}
+                                    onChange={(event) => setPromotionPriceEditValue(event.target.value)}
+                                    className="rounded-lg border border-[#1A1A1A] bg-black px-2 py-1 text-sm"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleSavePromotionPrice(product)}
+                                    className="rounded-lg bg-[#B2FF00] px-3 py-1 text-xs font-black text-black"
+                                  >
+                                    Salvar
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
                           );
                         })
                       )}
                     </div>
-                    <p className="mt-2 text-xs text-zinc-400">Produtos em promocao: {promotionProducts.length}</p>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleLaunchPromotion()}
+                      disabled={isLaunchingPromotion}
+                      className="mt-3 w-full rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isLaunchingPromotion ? "Lancando promocao..." : "Lançar promoção"}
+                    </button>
                   </div>
 
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
