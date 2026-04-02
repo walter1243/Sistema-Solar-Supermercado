@@ -146,6 +146,7 @@ export default function AdminClient() {
     pixKey: "",
     whatsappNumber: "",
     categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
+    promotionProductIds: [],
     deliveryMinimum: 150,
     pickupMinimum: 100,
     cashbackSpendThreshold: 0,
@@ -235,6 +236,12 @@ export default function AdminClient() {
       return searchable.includes(query);
     });
   }, [productSearch, productCategoryFilter, products]);
+
+  const promotionProductSet = useMemo(() => new Set(settings.promotionProductIds || []), [settings.promotionProductIds]);
+  const promotionProducts = useMemo(
+    () => products.filter((product) => promotionProductSet.has(product.id)),
+    [products, promotionProductSet],
+  );
 
   const totalProductsPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
@@ -411,9 +418,47 @@ export default function AdminClient() {
       }
 
       setAdminNotice({ type: "success", text: `Produto ${product.name} excluido com sucesso.` });
+
+      if (promotionProductSet.has(product.id)) {
+        const nextSettings = {
+          ...settings,
+          promotionProductIds: settings.promotionProductIds.filter((id) => id !== product.id),
+        };
+        setSettings(nextSettings);
+        try {
+          const saved = await saveAdminSettingsRemote(nextSettings);
+          setSettings(saved);
+        } catch {
+          // Keep local state when remote settings update is unavailable.
+        }
+      }
+
       await refreshAll();
     } finally {
       setDeletingProductId(null);
+    }
+  }
+
+  async function handleTogglePromotionProduct(productId: string) {
+    const isInPromotion = promotionProductSet.has(productId);
+    const nextSettings = {
+      ...settings,
+      promotionProductIds: isInPromotion
+        ? settings.promotionProductIds.filter((id) => id !== productId)
+        : [...settings.promotionProductIds, productId],
+    };
+
+    setSettings(nextSettings);
+
+    try {
+      const saved = await saveAdminSettingsRemote(nextSettings);
+      setSettings(saved);
+      setAdminNotice({
+        type: "success",
+        text: isInPromotion ? "Produto removido da promocao." : "Produto adicionado na promocao.",
+      });
+    } catch {
+      setAdminNotice({ type: "error", text: "Nao foi possivel atualizar a lista de promocao." });
     }
   }
 
@@ -940,6 +985,33 @@ export default function AdminClient() {
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
+                    <h2 className="text-lg font-bold">Promocao</h2>
+                    <p className="mt-1 text-xs text-zinc-400">Selecione os produtos que devem aparecer na categoria Promocao da loja.</p>
+                    <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+                      {products.length === 0 ? (
+                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Cadastre produtos para montar a promocao.</p>
+                      ) : (
+                        products.map((product) => {
+                          const selected = promotionProductSet.has(product.id);
+                          return (
+                            <label key={product.id} className={`flex items-center gap-2 rounded-xl border px-2 py-2 text-sm ${selected ? "border-[#B2FF00] bg-[#B2FF00]/10" : "border-[#1A1A1A] bg-black/50"}`}>
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => void handleTogglePromotionProduct(product.id)}
+                                className="h-4 w-4 accent-[#B2FF00]"
+                              />
+                              <img src={product.image} alt={product.name} className="h-9 w-9 rounded-lg object-cover" />
+                              <span className="line-clamp-1 flex-1">{product.name}</span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-zinc-400">Produtos em promocao: {promotionProducts.length}</p>
                   </div>
 
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">

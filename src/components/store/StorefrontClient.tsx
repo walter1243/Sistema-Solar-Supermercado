@@ -49,14 +49,16 @@ const profileDefault: CustomerProfile = {
 };
 
 type CheckoutStep = 1 | 2 | 3 | 4;
-type CategoryFilter = "todos" | "carnes" | "bebidas" | "hortfruit";
+type CategoryFilter = "todos" | "promocoes" | "carnes" | "bebidas" | "hortfruit";
 
 type PaymentMethod = Order["paymentMethod"];
 type FulfillmentMethod = Order["fulfillmentMethod"];
 const DEFAULT_DELIVERY_MINIMUM = 150;
 const DEFAULT_PICKUP_MINIMUM = 100;
+const PRODUCTS_PER_PAGE = 8;
 
 const displayCategories: Array<{ key: Exclude<CategoryFilter, "todos">; label: string }> = [
+  { key: "promocoes", label: "Promoções" },
   { key: "carnes", label: "Carnes" },
   { key: "bebidas", label: "Bebidas" },
   { key: "hortfruit", label: "Hortfruit" },
@@ -112,6 +114,7 @@ export default function StorefrontClient() {
     pixKey: "",
     whatsappNumber: "",
     categories: [],
+    promotionProductIds: [],
     deliveryMinimum: DEFAULT_DELIVERY_MINIMUM,
     pickupMinimum: DEFAULT_PICKUP_MINIMUM,
     cashbackSpendThreshold: 0,
@@ -120,6 +123,7 @@ export default function StorefrontClient() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("todos");
+  const [currentProductsPage, setCurrentProductsPage] = useState(1);
   const [categorySidebarOpen, setCategorySidebarOpen] = useState(false);
   const [profile, setProfile] = useState<CustomerProfile>(profileDefault);
   const [cartOpen, setCartOpen] = useState(false);
@@ -416,21 +420,43 @@ export default function StorefrontClient() {
     return null;
   }
 
+  const promotionProductSet = useMemo(() => new Set(settings.promotionProductIds || []), [settings.promotionProductIds]);
+
   const searchedProducts = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
     return products.filter((product) => {
       const matchSearch = !searchTerm || product.name.toLowerCase().includes(searchTerm);
       if (!matchSearch) return false;
       if (categoryFilter === "todos") return true;
+      if (categoryFilter === "promocoes") return promotionProductSet.has(product.id);
       return normalizeCategory(product.category) === categoryFilter;
     });
-  }, [products, search, categoryFilter]);
+  }, [products, search, categoryFilter, promotionProductSet]);
+
+  const totalProductsPages = useMemo(() => Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE)), [searchedProducts.length]);
+
+  const paginatedProducts = useMemo(() => {
+    const start = (currentProductsPage - 1) * PRODUCTS_PER_PAGE;
+    return searchedProducts.slice(start, start + PRODUCTS_PER_PAGE);
+  }, [currentProductsPage, searchedProducts]);
+
+  useEffect(() => {
+    setCurrentProductsPage(1);
+  }, [search, categoryFilter]);
+
+  useEffect(() => {
+    setCurrentProductsPage((current) => Math.min(current, totalProductsPages));
+  }, [totalProductsPages]);
 
   const sectionedProducts = useMemo(() => {
+    if (categoryFilter === "promocoes") {
+      return [{ name: "Promoções", items: paginatedProducts }].filter((section) => section.items.length > 0);
+    }
+
     const order = ["Cereais", "Carnes", "Bebidas", "Hortfruit", "Limpeza", "Outros"];
     const groups = new Map<string, Product[]>();
 
-    searchedProducts.forEach((product) => {
+    paginatedProducts.forEach((product) => {
       const section = getSectionName(product.category);
       const list = groups.get(section) || [];
       list.push(product);
@@ -438,7 +464,7 @@ export default function StorefrontClient() {
     });
 
     return order.map((name) => ({ name, items: groups.get(name) || [] })).filter((section) => section.items.length > 0);
-  }, [searchedProducts]);
+  }, [categoryFilter, paginatedProducts]);
 
   const latestTrackedOrder = useMemo(() => {
     if (lastOrderId) {
@@ -961,6 +987,33 @@ export default function StorefrontClient() {
               </motion.div>
             </section>
           ))}
+
+          {searchedProducts.length > 0 ? (
+            <div className="rounded-xl border border-[#1A1A1A] bg-[#080808] px-3 py-2">
+              <div className="flex items-center justify-between gap-2 text-xs text-zinc-400">
+                <span>Pagina {currentProductsPage} de {totalProductsPages}</span>
+                <span>{searchedProducts.length} produto(s)</span>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentProductsPage((current) => Math.max(1, current - 1))}
+                  disabled={currentProductsPage <= 1}
+                  className="rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  ← Voltar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentProductsPage((current) => Math.min(totalProductsPages, current + 1))}
+                  disabled={currentProductsPage >= totalProductsPages}
+                  className="rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Próxima →
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {searchedProducts.length === 0 ? <p className="mt-4 rounded-xl border border-[#1A1A1A] bg-[#080808] px-3 py-3 text-center text-sm text-zinc-500">Nenhum produto encontrado com esse termo de busca.</p> : null}

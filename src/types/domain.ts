@@ -52,6 +52,7 @@ export type AdminSettings = {
   pixKey: string;
   whatsappNumber: string;
   categories: string[];
+  promotionProductIds: string[];
   deliveryMinimum: number;
   pickupMinimum: number;
   cashbackSpendThreshold: number;

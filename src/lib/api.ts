@@ -71,6 +71,7 @@ export async function getAdminSettingsRemote(): Promise<AdminSettings> {
     pixKey: "",
     whatsappNumber: "",
     categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
+    promotionProductIds: [],
     deliveryMinimum: 150,
     pickupMinimum: 100,
     cashbackSpendThreshold: 0,
