@@ -815,11 +815,11 @@ export default function StorefrontClient() {
   return (
     <div className="min-h-screen bg-black pb-28 text-white">
       <header className="sticky top-0 z-30 border-b border-[#1A1A1A] bg-black/85 px-4 py-3 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-md items-center gap-1.5 sm:gap-2">
+        <div className="mx-auto flex w-full max-w-md items-center gap-0">
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="flex h-14 w-32 items-center justify-center bg-transparent px-0 sm:h-16 sm:w-44"
+            className="flex h-14 w-32 shrink-0 items-center justify-center bg-transparent px-0 sm:h-16 sm:w-44"
             aria-label="Abrir categorias"
           >
             <Image
@@ -832,12 +832,12 @@ export default function StorefrontClient() {
             />
           </button>
 
-          <div className="relative min-w-0 flex-1">
+          <div className="relative ml-9 min-w-0 flex-1 sm:ml-9">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto" className="h-10 w-full rounded-xl border border-[#1A1A1A] bg-black py-2 pl-9 pr-3 text-sm sm:h-auto" />
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0 sm:gap-2">
+          <div className="ml-2 flex items-center gap-1.5 shrink-0 sm:ml-2 sm:gap-2">
             <button type="button" onClick={() => setAccountOpen(true)} className="rounded-full border border-[#1A1A1A] p-1.5 sm:p-2" aria-label="Perfil">
               <User size={17} />
             </button>
