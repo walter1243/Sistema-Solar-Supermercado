@@ -529,13 +529,29 @@ export default function StorefrontClient() {
 
   const shouldLimitCategoryGrid = categoryFilter === "todos" && !search.trim();
 
+  const groupedSearchedProducts = useMemo(() => {
+    const groups = new Map<string, Product[]>();
+
+    searchedProducts.forEach((product) => {
+      const section = getSectionName(product.category);
+      const list = groups.get(section) || [];
+      list.push(product);
+      groups.set(section, list);
+    });
+
+    return groups;
+  }, [searchedProducts]);
+
   const totalProductsPages = useMemo(() => {
-    if (shouldLimitCategoryGrid) return 1;
+    if (shouldLimitCategoryGrid) {
+      const counts = [...groupedSearchedProducts.values()].map((items) => Math.ceil(items.length / 4));
+      return Math.max(1, ...counts);
+    }
     return Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE));
-  }, [searchedProducts.length, shouldLimitCategoryGrid]);
+  }, [groupedSearchedProducts, searchedProducts.length, shouldLimitCategoryGrid]);
 
   const paginatedProducts = useMemo(() => {
-    if (shouldLimitCategoryGrid) return searchedProducts;
+    if (shouldLimitCategoryGrid) return [];
     const start = (currentProductsPage - 1) * PRODUCTS_PER_PAGE;
     return searchedProducts.slice(start, start + PRODUCTS_PER_PAGE);
   }, [currentProductsPage, searchedProducts, shouldLimitCategoryGrid]);
@@ -559,20 +575,28 @@ export default function StorefrontClient() {
       return [{ name: "Promoções", items: paginatedProducts }].filter((section) => section.items.length > 0);
     }
 
+    if (shouldLimitCategoryGrid) {
+      const start = (currentProductsPage - 1) * 4;
+      const end = start + 4;
+      const order = [...settings.categories, "Outros"];
+
+      return order
+        .map((name) => ({ name, items: (groupedSearchedProducts.get(name) || []).slice(start, end) }))
+        .filter((section) => section.items.length > 0);
+    }
+
     const groups = new Map<string, Product[]>();
 
     paginatedProducts.forEach((product) => {
       const section = getSectionName(product.category);
       const list = groups.get(section) || [];
-      if (!shouldLimitCategoryGrid || list.length < 4) {
-        list.push(product);
-      }
+      list.push(product);
       groups.set(section, list);
     });
 
     const order = [...settings.categories, "Outros"];
     return order.map((name) => ({ name, items: groups.get(name) || [] })).filter((section) => section.items.length > 0);
-  }, [categoryFilter, paginatedProducts, settings.categories, shouldLimitCategoryGrid]);
+  }, [categoryFilter, currentProductsPage, groupedSearchedProducts, paginatedProducts, settings.categories, shouldLimitCategoryGrid]);
 
   const latestTrackedOrder = useMemo(() => {
     if (lastOrderId) {
