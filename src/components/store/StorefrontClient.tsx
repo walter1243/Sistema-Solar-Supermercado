@@ -468,9 +468,6 @@ export default function StorefrontClient() {
     [products, productSalesMap],
   );
 
-  // Modo overview: todos os produtos, sem busca ativa — mostra top 4 por categoria na pág. 1
-  const isOverviewMode = categoryFilter === "todos" && search.trim() === "";
-
   const searchedProducts = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
     return rankedProducts.filter((product) => {
@@ -487,45 +484,12 @@ export default function StorefrontClient() {
     [dynamicDisplayCategories, promotionProductSet.size],
   );
 
-  // Seções da página 1 (overview): top 4 mais vendidos por categoria
-  const overviewSections = useMemo(() => {
-    const groups = new Map<string, Product[]>();
-    rankedProducts.forEach((product) => {
-      const cat = product.category || "Outros";
-      const list = groups.get(cat) || [];
-      if (list.length < 4) {
-        list.push(product);
-        groups.set(cat, list);
-      }
-    });
-    const order = [...settings.categories, "Outros"];
-    return order.map((name) => ({ name, items: groups.get(name) || [] })).filter((s) => s.items.length > 0);
-  }, [rankedProducts, settings.categories]);
-
-  const overviewShownIds = useMemo(() => {
-    const ids = new Set<string>();
-    overviewSections.forEach((s) => s.items.forEach((p) => ids.add(p.id)));
-    return ids;
-  }, [overviewSections]);
-
-  const totalProductsPages = useMemo(() => {
-    if (isOverviewMode) {
-      const overflowCount = rankedProducts.filter((p) => !overviewShownIds.has(p.id)).length;
-      return 1 + Math.max(0, Math.ceil(overflowCount / PRODUCTS_PER_PAGE));
-    }
-    return Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE));
-  }, [isOverviewMode, rankedProducts, overviewShownIds, searchedProducts.length]);
+  const totalProductsPages = useMemo(() => Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE)), [searchedProducts.length]);
 
   const paginatedProducts = useMemo(() => {
-    if (isOverviewMode) {
-      if (currentProductsPage === 1) return [];
-      const overflowProducts = rankedProducts.filter((p) => !overviewShownIds.has(p.id));
-      const start = (currentProductsPage - 2) * PRODUCTS_PER_PAGE;
-      return overflowProducts.slice(start, start + PRODUCTS_PER_PAGE);
-    }
     const start = (currentProductsPage - 1) * PRODUCTS_PER_PAGE;
     return searchedProducts.slice(start, start + PRODUCTS_PER_PAGE);
-  }, [currentProductsPage, isOverviewMode, overviewShownIds, rankedProducts, searchedProducts]);
+  }, [currentProductsPage, searchedProducts]);
 
   useEffect(() => {
     setCurrentProductsPage(1);
@@ -542,9 +506,6 @@ export default function StorefrontClient() {
   }, [categoryFilter, promotionProductSet]);
 
   const sectionedProducts = useMemo(() => {
-    // Página 1 overview: top 4 mais vendidos por categoria
-    if (isOverviewMode && currentProductsPage === 1) return overviewSections;
-
     if (categoryFilter === "promocoes") {
       return [{ name: "Promoções", items: paginatedProducts }].filter((section) => section.items.length > 0);
     }
@@ -560,7 +521,7 @@ export default function StorefrontClient() {
 
     const order = [...settings.categories, "Outros"];
     return order.map((name) => ({ name, items: groups.get(name) || [] })).filter((section) => section.items.length > 0);
-  }, [isOverviewMode, currentProductsPage, overviewSections, categoryFilter, paginatedProducts, settings.categories]);
+  }, [categoryFilter, paginatedProducts, settings.categories]);
 
   const latestTrackedOrder = useMemo(() => {
     if (lastOrderId) {
@@ -1027,18 +988,10 @@ export default function StorefrontClient() {
         ) : null}
 
         <div className="space-y-4">
-          {isOverviewMode && currentProductsPage === 1 ? (
-            <p className="px-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">
-              Top 4 mais comprados por categoria
-            </p>
-          ) : null}
           {sectionedProducts.map((section) => (
             <section key={section.name} className="rounded-2xl border border-white/10 bg-[#080808] p-2.5">
               <div className="mb-2 flex items-center gap-2 px-1">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-zinc-300">{section.name}</p>
-                {isOverviewMode && currentProductsPage === 1 ? (
-                  <span className="rounded-full bg-[#B2FF00]/15 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-[#B2FF00]">mais vendidos</span>
-                ) : null}
                 <div className="h-px flex-1 bg-white/10" />
               </div>
               <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-2 gap-3">
