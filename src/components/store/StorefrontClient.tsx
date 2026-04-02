@@ -819,7 +819,7 @@ export default function StorefrontClient() {
           <button
             type="button"
             onClick={() => setCategorySidebarOpen(true)}
-            className="flex h-14 w-32 shrink-0 items-center justify-center bg-transparent px-0 sm:h-16 sm:w-44"
+            className="flex h-14 w-24 shrink-0 items-center justify-center bg-transparent px-0 sm:h-16 sm:w-36"
             aria-label="Abrir categorias"
           >
             <Image
@@ -832,7 +832,7 @@ export default function StorefrontClient() {
             />
           </button>
 
-          <div className="relative ml-9 min-w-0 flex-1 sm:ml-9">
+          <div className="relative ml-1.5 min-w-0 flex-1">
             <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto" className="h-10 w-full rounded-xl border border-[#1A1A1A] bg-black py-2 pl-9 pr-3 text-sm sm:h-auto" />
           </div>
