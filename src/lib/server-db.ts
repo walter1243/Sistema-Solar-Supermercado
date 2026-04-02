@@ -176,6 +176,11 @@ async function ensureSchema() {
       `;
 
       await sql`
+        ALTER TABLE products
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      `;
+
+      await sql`
         CREATE TABLE IF NOT EXISTS customers (
           id TEXT PRIMARY KEY,
           full_name TEXT NOT NULL,
@@ -495,7 +500,10 @@ export async function getProducts(): Promise<Product[]> {
     image: String(row.image),
     category: String(row.category),
     unit: (["und", "cx", "kg", "pact", "fardo"].includes(String(row.unit)) ? String(row.unit) : "und") as Product["unit"],
-    createdAt: new Date(row.created_at).toISOString(),
+    createdAt: (() => {
+      const parsed = new Date(String(row.created_at || ""));
+      return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+    })(),
   }));
 }
 
