@@ -493,16 +493,34 @@ export default function StorefrontClient() {
     return [promoEntry, ...catEntries];
   }, [settings.categories]);
 
+  const productSalesMap = useMemo(() => {
+    const sales = new Map<string, number>();
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        sales.set(item.productId, (sales.get(item.productId) ?? 0) + item.quantity);
+      });
+    });
+    return sales;
+  }, [orders]);
+
+  const rankedProducts = useMemo(() => {
+    return [...products].sort((left, right) => {
+      const salesDiff = (productSalesMap.get(right.id) ?? 0) - (productSalesMap.get(left.id) ?? 0);
+      if (salesDiff !== 0) return salesDiff;
+      return String(right.createdAt || "").localeCompare(String(left.createdAt || ""));
+    });
+  }, [productSalesMap, products]);
+
   const searchedProducts = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
-    return products.filter((product) => {
+    return rankedProducts.filter((product) => {
       const matchSearch = !searchTerm || product.name.toLowerCase().includes(searchTerm);
       if (!matchSearch) return false;
       if (categoryFilter === "todos") return true;
       if (categoryFilter === "promocoes") return promotionProductSet.has(product.id);
       return normalizeCategory(product.category) === categoryFilter;
     });
-  }, [products, search, categoryFilter, promotionProductSet]);
+  }, [rankedProducts, search, categoryFilter, promotionProductSet]);
 
   const visibleDisplayCategories = useMemo(
     () => dynamicDisplayCategories.filter((category) => category.key !== "promocoes" || promotionProductSet.size > 0),
