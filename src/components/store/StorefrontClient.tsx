@@ -50,20 +50,13 @@ const profileDefault: CustomerProfile = {
 };
 
 type CheckoutStep = 1 | 2 | 3 | 4;
-type CategoryFilter = "todos" | "promocoes" | "carnes" | "bebidas" | "hortfruit";
+type CategoryFilter = string;
 
 type PaymentMethod = Order["paymentMethod"];
 type FulfillmentMethod = Order["fulfillmentMethod"];
 const DEFAULT_DELIVERY_MINIMUM = 150;
 const DEFAULT_PICKUP_MINIMUM = 100;
 const PRODUCTS_PER_PAGE = 8;
-
-const displayCategories: Array<{ key: Exclude<CategoryFilter, "todos">; label: string }> = [
-  { key: "promocoes", label: "Promoções" },
-  { key: "carnes", label: "Carnes" },
-  { key: "bebidas", label: "Bebidas" },
-  { key: "hortfruit", label: "Hortfruit" },
-];
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -94,14 +87,7 @@ function getStatusMessage(status: Order["status"], fulfillmentMethod: Order["ful
 }
 
 function getSectionName(rawCategory: string) {
-  const normalized = rawCategory.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-
-  if (normalized.includes("mercearia") || normalized.includes("arroz") || normalized.includes("feijao") || normalized.includes("cereal")) return "Cereais";
-  if (normalized.includes("carn")) return "Carnes";
-  if (normalized.includes("bebida") || normalized.includes("suco") || normalized.includes("refrigerante")) return "Bebidas";
-  if (normalized.includes("hort") || normalized.includes("fruta") || normalized.includes("verdura") || normalized.includes("legume")) return "Hortfruit";
-  if (normalized.includes("limpeza")) return "Limpeza";
-  return "Outros";
+  return rawCategory || "Outros";
 }
 
 function isPromotionWindowActive(startDate: string, endDate: string) {
@@ -452,13 +438,18 @@ export default function StorefrontClient() {
     }
   }, [fulfillmentMethod, isDeliveryUnlocked]);
 
-  function normalizeCategory(raw: string): Exclude<CategoryFilter, "todos"> | null {
-    const normalized = raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    if (normalized.includes("carn")) return "carnes";
-    if (normalized.includes("bebida") || normalized.includes("suco") || normalized.includes("refrigerante")) return "bebidas";
-    if (normalized.includes("hort") || normalized.includes("fruta") || normalized.includes("verdura") || normalized.includes("legume")) return "hortfruit";
-    return null;
+  function normalizeCategory(raw: string): string {
+    return raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
   }
+
+  const dynamicDisplayCategories = useMemo(() => {
+    const promoEntry = { key: "promocoes", label: "Promoções" };
+    const catEntries = settings.categories.map((cat) => ({
+      key: normalizeCategory(cat),
+      label: cat,
+    }));
+    return [promoEntry, ...catEntries];
+  }, [settings.categories]);
 
   const searchedProducts = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
@@ -472,8 +463,8 @@ export default function StorefrontClient() {
   }, [products, search, categoryFilter, promotionProductSet]);
 
   const visibleDisplayCategories = useMemo(
-    () => displayCategories.filter((category) => category.key !== "promocoes" || promotionProductSet.size > 0),
-    [promotionProductSet.size],
+    () => dynamicDisplayCategories.filter((category) => category.key !== "promocoes" || promotionProductSet.size > 0),
+    [dynamicDisplayCategories, promotionProductSet.size],
   );
 
   const totalProductsPages = useMemo(() => Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE)), [searchedProducts.length]);
@@ -502,7 +493,6 @@ export default function StorefrontClient() {
       return [{ name: "Promoções", items: paginatedProducts }].filter((section) => section.items.length > 0);
     }
 
-    const order = ["Cereais", "Carnes", "Bebidas", "Hortfruit", "Limpeza", "Outros"];
     const groups = new Map<string, Product[]>();
 
     paginatedProducts.forEach((product) => {
@@ -512,8 +502,9 @@ export default function StorefrontClient() {
       groups.set(section, list);
     });
 
+    const order = [...settings.categories, "Outros"];
     return order.map((name) => ({ name, items: groups.get(name) || [] })).filter((section) => section.items.length > 0);
-  }, [categoryFilter, paginatedProducts]);
+  }, [categoryFilter, paginatedProducts, settings.categories]);
 
   const latestTrackedOrder = useMemo(() => {
     if (lastOrderId) {

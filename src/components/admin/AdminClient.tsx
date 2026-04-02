@@ -576,12 +576,18 @@ export default function AdminClient() {
     }
   }
 
-  function handleAddCategory() {
+  async function handleAddCategory() {
     const trimmed = newCategory.trim();
     if (!trimmed || settings.categories.includes(trimmed)) return;
     const next = { ...settings, categories: [...settings.categories, trimmed] };
     setSettings(next);
     setNewCategory("");
+    try {
+      const saved = await saveAdminSettingsRemote(next);
+      setSettings(saved);
+    } catch {
+      // Keep local state when remote settings update is unavailable.
+    }
     setAdminNotice({ type: "info", text: `Categoria ${trimmed} adicionada.` });
   }
 
