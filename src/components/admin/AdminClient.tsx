@@ -147,6 +147,9 @@ export default function AdminClient() {
     whatsappNumber: "",
     categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
     promotionProductIds: [],
+    promotionStartDate: "",
+    promotionEndDate: "",
+    promotionPrices: {},
     deliveryMinimum: 150,
     pickupMinimum: 100,
     cashbackSpendThreshold: 0,
@@ -171,6 +174,9 @@ export default function AdminClient() {
   const [customerAlertForm, setCustomerAlertForm] = useState({ customerId: "", title: "", message: "" });
   const [promotionSearch, setPromotionSearch] = useState("");
   const [promotionDraftProductIds, setPromotionDraftProductIds] = useState<string[]>([]);
+  const [promotionDraftStartDate, setPromotionDraftStartDate] = useState("");
+  const [promotionDraftEndDate, setPromotionDraftEndDate] = useState("");
+  const [promotionDraftPrices, setPromotionDraftPrices] = useState<Record<string, number>>({});
   const [promotionPriceEditProductId, setPromotionPriceEditProductId] = useState<string | null>(null);
   const [promotionPriceEditValue, setPromotionPriceEditValue] = useState("");
   const [isLaunchingPromotion, setIsLaunchingPromotion] = useState(false);
@@ -209,7 +215,10 @@ export default function AdminClient() {
 
   useEffect(() => {
     setPromotionDraftProductIds(settings.promotionProductIds || []);
-  }, [settings.promotionProductIds]);
+    setPromotionDraftStartDate(settings.promotionStartDate || "");
+    setPromotionDraftEndDate(settings.promotionEndDate || "");
+    setPromotionDraftPrices(settings.promotionPrices || {});
+  }, [settings.promotionProductIds, settings.promotionStartDate, settings.promotionEndDate, settings.promotionPrices]);
 
   async function refreshAll() {
     setProducts(await getProductsCatalog());
@@ -248,10 +257,14 @@ export default function AdminClient() {
 
   const promotionProductSet = useMemo(() => new Set(settings.promotionProductIds || []), [settings.promotionProductIds]);
   const promotionDraftSet = useMemo(() => new Set(promotionDraftProductIds), [promotionDraftProductIds]);
-  const promotionProducts = useMemo(
-    () => products.filter((product) => promotionDraftSet.has(product.id)),
-    [products, promotionDraftSet],
-  );
+  const filteredPromotionDraftProducts = useMemo(() => {
+    const query = promotionSearch.trim().toLowerCase();
+    return products.filter((product) => {
+      if (!promotionDraftSet.has(product.id)) return false;
+      if (!query) return true;
+      return product.name.toLowerCase().includes(query);
+    });
+  }, [products, promotionDraftSet, promotionSearch]);
   const promotionAvailableProducts = useMemo(() => {
     const query = promotionSearch.trim().toLowerCase();
     return products.filter((product) => {
@@ -260,6 +273,18 @@ export default function AdminClient() {
       return product.name.toLowerCase().includes(query);
     });
   }, [products, promotionDraftSet, promotionSearch]);
+
+  const promotionDateStatus = useMemo(() => {
+    if (!promotionDraftProductIds.length) return "Nenhuma promoção montada.";
+    if (!promotionDraftStartDate || !promotionDraftEndDate) return "Defina data inicial e final para ativar a promoção.";
+    const now = new Date();
+    const start = new Date(`${promotionDraftStartDate}T00:00:00`);
+    const end = new Date(`${promotionDraftEndDate}T23:59:59`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Datas inválidas.";
+    if (now < start) return "Promoção agendada (ainda não iniciada).";
+    if (now > end) return "Promoção expirada (não aparece na loja).";
+    return "Promoção ativa na loja.";
+  }, [promotionDraftEndDate, promotionDraftProductIds.length, promotionDraftStartDate]);
 
   const totalProductsPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
@@ -438,9 +463,12 @@ export default function AdminClient() {
       setAdminNotice({ type: "success", text: `Produto ${product.name} excluido com sucesso.` });
 
       if (promotionProductSet.has(product.id)) {
+        const nextPromotionPrices = { ...(settings.promotionPrices || {}) };
+        delete nextPromotionPrices[product.id];
         const nextSettings = {
           ...settings,
           promotionProductIds: settings.promotionProductIds.filter((id) => id !== product.id),
+          promotionPrices: nextPromotionPrices,
         };
         setSettings(nextSettings);
         try {
@@ -458,11 +486,23 @@ export default function AdminClient() {
   }
 
   function handleAddPromotionDraftProduct(productId: string) {
-    setPromotionDraftProductIds((current) => (current.includes(productId) ? current : [...current, productId]));
+      const product = products.find((item) => item.id === productId);
+      setPromotionDraftProductIds((current) => (current.includes(productId) ? current : [...current, productId]));
+      if (product) {
+        setPromotionDraftPrices((current) => ({
+          ...current,
+          [productId]: Number.isFinite(current[productId]) ? current[productId] : product.price,
+        }));
+      }
   }
 
   function handleRemovePromotionDraftProduct(productId: string) {
     setPromotionDraftProductIds((current) => current.filter((id) => id !== productId));
+    setPromotionDraftPrices((current) => {
+      const next = { ...current };
+      delete next[productId];
+      return next;
+    });
     if (promotionPriceEditProductId === productId) {
       setPromotionPriceEditProductId(null);
       setPromotionPriceEditValue("");
@@ -471,7 +511,7 @@ export default function AdminClient() {
 
   function handleStartPromotionPriceEdit(product: Product) {
     setPromotionPriceEditProductId(product.id);
-    setPromotionPriceEditValue(String(product.price));
+    setPromotionPriceEditValue(String(promotionDraftPrices[product.id] ?? product.price));
   }
 
   async function handleSavePromotionPrice(product: Product) {
@@ -481,26 +521,54 @@ export default function AdminClient() {
       return;
     }
 
-    await updateProductRemote({ ...product, price: nextPrice });
+    setPromotionDraftPrices((current) => ({ ...current, [product.id]: nextPrice }));
     setPromotionPriceEditProductId(null);
     setPromotionPriceEditValue("");
-    await refreshAll();
-    setAdminNotice({ type: "success", text: `Preco de ${product.name} atualizado para ${formatCurrency(nextPrice)}.` });
+    setAdminNotice({ type: "success", text: `Preco promocional de ${product.name} definido para ${formatCurrency(nextPrice)}.` });
   }
 
   async function handleLaunchPromotion() {
     if (isLaunchingPromotion) return;
+
+    if (!promotionDraftProductIds.length) {
+      setAdminNotice({ type: "error", text: "Adicione pelo menos um produto na promoção." });
+      return;
+    }
+
+    if (!promotionDraftStartDate || !promotionDraftEndDate) {
+      setAdminNotice({ type: "error", text: "Informe a data inicial e final da promoção." });
+      return;
+    }
+
+    const start = new Date(`${promotionDraftStartDate}T00:00:00`);
+    const end = new Date(`${promotionDraftEndDate}T23:59:59`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+      setAdminNotice({ type: "error", text: "Periodo de promoção invalido. Ajuste as datas." });
+      return;
+    }
+
+    const normalizedPromotionPrices: Record<string, number> = {};
+    promotionDraftProductIds.forEach((productId) => {
+      const product = products.find((item) => item.id === productId);
+      if (!product) return;
+      const draftPrice = promotionDraftPrices[productId];
+      normalizedPromotionPrices[productId] = Number.isFinite(draftPrice) && draftPrice > 0 ? draftPrice : product.price;
+    });
+
     setIsLaunchingPromotion(true);
 
     const nextSettings = {
       ...settings,
       promotionProductIds: promotionDraftProductIds,
+      promotionStartDate: promotionDraftStartDate,
+      promotionEndDate: promotionDraftEndDate,
+      promotionPrices: normalizedPromotionPrices,
     };
 
     try {
       const saved = await saveAdminSettingsRemote(nextSettings);
       setSettings(saved);
-      setAdminNotice({ type: "success", text: "Promocao lancada com sucesso na loja." });
+      setAdminNotice({ type: "success", text: "Promocao publicada com periodo e preços promocionais." });
     } catch {
       setAdminNotice({ type: "error", text: "Nao foi possivel lancar a promocao agora." });
     } finally {
@@ -1035,11 +1103,32 @@ export default function AdminClient() {
 
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
                     <h2 className="text-lg font-bold">Promocao</h2>
-                    <p className="mt-1 text-xs text-zinc-400">Monte a promocao antes de publicar na loja.</p>
+                    <p className="mt-1 text-xs text-zinc-400">Defina periodo, produtos e preco promocional antes de publicar na loja.</p>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <label className="text-xs text-zinc-400">
+                        Data inicial
+                        <input
+                          type="date"
+                          value={promotionDraftStartDate}
+                          onChange={(event) => setPromotionDraftStartDate(event.target.value)}
+                          className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                        />
+                      </label>
+                      <label className="text-xs text-zinc-400">
+                        Data final
+                        <input
+                          type="date"
+                          value={promotionDraftEndDate}
+                          onChange={(event) => setPromotionDraftEndDate(event.target.value)}
+                          className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                        />
+                      </label>
+                    </div>
+                    <p className="mt-2 text-xs text-[#9BFFD1]">{promotionDateStatus}</p>
                     <input
                       value={promotionSearch}
                       onChange={(event) => setPromotionSearch(event.target.value)}
-                      placeholder="Buscar produto para promocao"
+                      placeholder="Buscar por nome do produto"
                       className="mt-3 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                     />
 
@@ -1065,18 +1154,29 @@ export default function AdminClient() {
 
                     <p className="mt-3 text-xs font-semibold text-zinc-300">Produtos selecionados</p>
                     <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
-                      {promotionProducts.length === 0 ? (
+                      {filteredPromotionDraftProducts.length === 0 ? (
                         <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto na lista de promocao.</p>
                       ) : (
-                        promotionProducts.map((product) => {
+                        filteredPromotionDraftProducts.map((product) => {
                           const editingPrice = promotionPriceEditProductId === product.id;
+                          const promotionPrice = promotionDraftPrices[product.id] ?? product.price;
                           return (
                             <div key={product.id} className="rounded-xl border border-[#1A1A1A] bg-black/60 px-2 py-2 text-sm">
                               <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartPromotionPriceEdit(product)}
+                                  className="grid h-8 w-8 place-items-center rounded-lg border border-[#00AAFF] text-[#00AAFF]"
+                                  aria-label={`Editar preco de ${product.name}`}
+                                  title="Editar preco"
+                                >
+                                  <Pencil size={14} />
+                                </button>
                                 <img src={product.image} alt={product.name} className="h-9 w-9 rounded-lg object-cover" />
                                 <div className="min-w-0 flex-1">
                                   <p className="line-clamp-1">{product.name}</p>
-                                  <p className="text-xs text-[#B2FF00]">{formatCurrency(product.price)}</p>
+                                  <p className="text-xs text-zinc-400">Base: {formatCurrency(product.price)}</p>
+                                  <p className="text-xs text-[#B2FF00]">Promo: {formatCurrency(promotionPrice)}</p>
                                 </div>
                                 <button
                                   type="button"
@@ -1086,15 +1186,6 @@ export default function AdminClient() {
                                   title="Remover da promocao"
                                 >
                                   <Trash2 size={14} />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartPromotionPriceEdit(product)}
-                                  className="grid h-8 w-8 place-items-center rounded-lg border border-[#00AAFF] text-[#00AAFF]"
-                                  aria-label={`Editar preco de ${product.name}`}
-                                  title="Editar preco"
-                                >
-                                  <Pencil size={14} />
                                 </button>
                               </div>
 
@@ -1129,8 +1220,9 @@ export default function AdminClient() {
                       disabled={isLaunchingPromotion}
                       className="mt-3 w-full rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {isLaunchingPromotion ? "Lancando promocao..." : "Lançar promoção"}
+                      {isLaunchingPromotion ? "Publicando promocao..." : "Lançar promoção"}
                     </button>
+                    <p className="mt-2 text-[11px] text-zinc-500">Quando a data final expirar, os preços voltam ao cadastrado automaticamente e a categoria Promoções some da loja.</p>
                   </div>
 
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">

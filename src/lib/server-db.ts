@@ -6,6 +6,9 @@ const defaultSettings: AdminSettings = {
   whatsappNumber: "",
   categories: ["Mercearia", "Carnes", "Bebidas", "Hortfruit", "Limpeza"],
   promotionProductIds: [],
+  promotionStartDate: "",
+  promotionEndDate: "",
+  promotionPrices: {},
   deliveryMinimum: 150,
   pickupMinimum: 100,
   cashbackSpendThreshold: 0,
@@ -105,6 +108,9 @@ async function ensureSchema() {
           whatsapp_number TEXT NOT NULL DEFAULT '',
           categories JSONB NOT NULL,
           promotion_product_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+          promotion_start_date TEXT NOT NULL DEFAULT '',
+          promotion_end_date TEXT NOT NULL DEFAULT '',
+          promotion_prices JSONB NOT NULL DEFAULT '{}'::jsonb,
           delivery_minimum NUMERIC NOT NULL DEFAULT 150,
           pickup_minimum NUMERIC NOT NULL DEFAULT 100,
           cashback_spend_threshold NUMERIC NOT NULL DEFAULT 0,
@@ -115,6 +121,21 @@ async function ensureSchema() {
       await sql`
         ALTER TABLE admin_settings
         ADD COLUMN IF NOT EXISTS promotion_product_ids JSONB NOT NULL DEFAULT '[]'::jsonb;
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS promotion_start_date TEXT NOT NULL DEFAULT '';
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS promotion_end_date TEXT NOT NULL DEFAULT '';
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS promotion_prices JSONB NOT NULL DEFAULT '{}'::jsonb;
       `;
 
       await sql`
@@ -233,6 +254,9 @@ async function ensureSchema() {
           whatsapp_number,
           categories,
           promotion_product_ids,
+          promotion_start_date,
+          promotion_end_date,
+          promotion_prices,
           delivery_minimum,
           pickup_minimum,
           cashback_spend_threshold,
@@ -244,6 +268,9 @@ async function ensureSchema() {
           ${defaultSettings.whatsappNumber},
           ${JSON.stringify(defaultSettings.categories)}::jsonb,
           ${JSON.stringify(defaultSettings.promotionProductIds)}::jsonb,
+          ${defaultSettings.promotionStartDate},
+          ${defaultSettings.promotionEndDate},
+          ${JSON.stringify(defaultSettings.promotionPrices)}::jsonb,
           ${defaultSettings.deliveryMinimum},
           ${defaultSettings.pickupMinimum},
           ${defaultSettings.cashbackSpendThreshold},
@@ -284,6 +311,9 @@ export async function getSettings(): Promise<AdminSettings> {
     whatsappNumber: String(data.whatsapp_number || ""),
     categories: Array.isArray(data.categories) && data.categories.length ? data.categories : defaultSettings.categories,
     promotionProductIds: Array.isArray(data.promotion_product_ids) ? data.promotion_product_ids : defaultSettings.promotionProductIds,
+    promotionStartDate: String(data.promotion_start_date || ""),
+    promotionEndDate: String(data.promotion_end_date || ""),
+    promotionPrices: data.promotion_prices && typeof data.promotion_prices === "object" ? (data.promotion_prices as Record<string, number>) : defaultSettings.promotionPrices,
     deliveryMinimum: Number(data.delivery_minimum || defaultSettings.deliveryMinimum),
     pickupMinimum: Number(data.pickup_minimum || defaultSettings.pickupMinimum),
     cashbackSpendThreshold: Number(data.cashback_spend_threshold || defaultSettings.cashbackSpendThreshold),
@@ -298,6 +328,9 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
     ...settings,
     categories: settings.categories?.length ? settings.categories : defaultSettings.categories,
     promotionProductIds: Array.isArray(settings.promotionProductIds) ? settings.promotionProductIds : defaultSettings.promotionProductIds,
+    promotionStartDate: typeof settings.promotionStartDate === "string" ? settings.promotionStartDate : defaultSettings.promotionStartDate,
+    promotionEndDate: typeof settings.promotionEndDate === "string" ? settings.promotionEndDate : defaultSettings.promotionEndDate,
+    promotionPrices: settings.promotionPrices && typeof settings.promotionPrices === "object" ? settings.promotionPrices : defaultSettings.promotionPrices,
     deliveryMinimum: Number.isFinite(settings.deliveryMinimum) ? Number(settings.deliveryMinimum) : defaultSettings.deliveryMinimum,
     pickupMinimum: Number.isFinite(settings.pickupMinimum) ? Number(settings.pickupMinimum) : defaultSettings.pickupMinimum,
     cashbackSpendThreshold: Number.isFinite(settings.cashbackSpendThreshold) ? Number(settings.cashbackSpendThreshold) : defaultSettings.cashbackSpendThreshold,
@@ -308,7 +341,10 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
     SET pix_key = ${next.pixKey},
         whatsapp_number = ${next.whatsappNumber},
         categories = ${JSON.stringify(next.categories)}::jsonb,
-      promotion_product_ids = ${JSON.stringify(next.promotionProductIds)}::jsonb,
+        promotion_product_ids = ${JSON.stringify(next.promotionProductIds)}::jsonb,
+        promotion_start_date = ${next.promotionStartDate},
+        promotion_end_date = ${next.promotionEndDate},
+        promotion_prices = ${JSON.stringify(next.promotionPrices)}::jsonb,
         delivery_minimum = ${next.deliveryMinimum},
         pickup_minimum = ${next.pickupMinimum},
         cashback_spend_threshold = ${next.cashbackSpendThreshold},

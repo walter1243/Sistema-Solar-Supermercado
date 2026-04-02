@@ -53,6 +53,9 @@ export type AdminSettings = {
   whatsappNumber: string;
   categories: string[];
   promotionProductIds: string[];
+  promotionStartDate: string;
+  promotionEndDate: string;
+  promotionPrices: Record<string, number>;
   deliveryMinimum: number;
   pickupMinimum: number;
   cashbackSpendThreshold: number;

@@ -104,6 +104,15 @@ function getSectionName(rawCategory: string) {
   return "Outros";
 }
 
+function isPromotionWindowActive(startDate: string, endDate: string) {
+  if (!startDate || !endDate) return false;
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59`);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+  const now = new Date();
+  return now >= start && now <= end;
+}
+
 export default function StorefrontClient() {
   const WHATSAPP_BUTTON_SIZE = 56;
   const WHATSAPP_EDGE_MARGIN = 12;
@@ -116,6 +125,9 @@ export default function StorefrontClient() {
     whatsappNumber: "",
     categories: [],
     promotionProductIds: [],
+    promotionStartDate: "",
+    promotionEndDate: "",
+    promotionPrices: {},
     deliveryMinimum: DEFAULT_DELIVERY_MINIMUM,
     pickupMinimum: DEFAULT_PICKUP_MINIMUM,
     cashbackSpendThreshold: 0,
@@ -320,13 +332,40 @@ export default function StorefrontClient() {
 
   const cartCount = useMemo(() => cart.reduce((sum, item) => sum + item.quantity, 0), [cart]);
 
+  const promotionWindowActive = useMemo(
+    () => isPromotionWindowActive(settings.promotionStartDate, settings.promotionEndDate),
+    [settings.promotionEndDate, settings.promotionStartDate],
+  );
+
+  const promotionProductSet = useMemo(
+    () => new Set(promotionWindowActive ? settings.promotionProductIds || [] : []),
+    [promotionWindowActive, settings.promotionProductIds],
+  );
+
+  const promotionPriceMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!promotionWindowActive) return map;
+    const rawPrices = settings.promotionPrices || {};
+    Object.entries(rawPrices).forEach(([productId, value]) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric) && numeric > 0) {
+        map.set(productId, numeric);
+      }
+    });
+    return map;
+  }, [promotionWindowActive, settings.promotionPrices]);
+
+  function getEffectiveProductPrice(product: Product) {
+    return promotionPriceMap.get(product.id) ?? product.price;
+  }
+
   const total = useMemo(() => {
     return cart.reduce((sum, item) => {
       const product = products.find((p) => p.id === item.productId);
       if (!product) return sum;
-      return sum + product.price * item.quantity;
+      return sum + getEffectiveProductPrice(product) * item.quantity;
     }, 0);
-  }, [cart, products]);
+  }, [cart, products, promotionPriceMap]);
 
   const deliveryMinimum = Number.isFinite(settings.deliveryMinimum) ? Number(settings.deliveryMinimum) : DEFAULT_DELIVERY_MINIMUM;
   const pickupMinimum = Number.isFinite(settings.pickupMinimum) ? Number(settings.pickupMinimum) : DEFAULT_PICKUP_MINIMUM;
@@ -421,8 +460,6 @@ export default function StorefrontClient() {
     return null;
   }
 
-  const promotionProductSet = useMemo(() => new Set(settings.promotionProductIds || []), [settings.promotionProductIds]);
-
   const searchedProducts = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
     return products.filter((product) => {
@@ -433,6 +470,11 @@ export default function StorefrontClient() {
       return normalizeCategory(product.category) === categoryFilter;
     });
   }, [products, search, categoryFilter, promotionProductSet]);
+
+  const visibleDisplayCategories = useMemo(
+    () => displayCategories.filter((category) => category.key !== "promocoes" || promotionProductSet.size > 0),
+    [promotionProductSet.size],
+  );
 
   const totalProductsPages = useMemo(() => Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE)), [searchedProducts.length]);
 
@@ -448,6 +490,12 @@ export default function StorefrontClient() {
   useEffect(() => {
     setCurrentProductsPage((current) => Math.min(current, totalProductsPages));
   }, [totalProductsPages]);
+
+  useEffect(() => {
+    if (categoryFilter === "promocoes" && promotionProductSet.size === 0) {
+      setCategoryFilter("todos");
+    }
+  }, [categoryFilter, promotionProductSet]);
 
   const sectionedProducts = useMemo(() => {
     if (categoryFilter === "promocoes") {
@@ -701,7 +749,7 @@ export default function StorefrontClient() {
           productId: product.id,
           name: item.meatCut ? `${product.name} (${item.meatCut})` : product.name,
           quantity: item.quantity,
-          unitPrice: product.price,
+          unitPrice: getEffectiveProductPrice(product),
         };
       }),
       customer: {
@@ -841,17 +889,17 @@ export default function StorefrontClient() {
             <button type="button" onClick={() => setAccountOpen(true)} className="rounded-full border border-[#1A1A1A] p-1.5 sm:p-2" aria-label="Perfil">
               <User size={17} />
             </button>
-            <button
-              type="button"
-              onClick={() => { setCategoryFilter("promocoes"); setCurrentProductsPage(1); setCategorySidebarOpen(false); }}
-              className="relative rounded-full bg-[#B2FF00] p-1.5 text-black shadow-[0_0_14px_rgba(178,255,0,0.5)] sm:p-2"
-              aria-label="Ver promoções"
-            >
-              <Tag size={17} />
-              {settings.promotionProductIds.length > 0 && (
-                <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#FF4400] text-[9px] font-bold text-white">{settings.promotionProductIds.length}</span>
-              )}
-            </button>
+            {promotionProductSet.size > 0 ? (
+              <button
+                type="button"
+                onClick={() => { setCategoryFilter("promocoes"); setCurrentProductsPage(1); setCategorySidebarOpen(false); }}
+                className="relative rounded-full bg-[#B2FF00] p-1.5 text-black shadow-[0_0_14px_rgba(178,255,0,0.5)] sm:p-2"
+                aria-label="Ver promoções"
+              >
+                <Tag size={17} />
+                <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#FF4400] text-[9px] font-bold text-white">{promotionProductSet.size}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => {
@@ -939,68 +987,75 @@ export default function StorefrontClient() {
                 <div className="h-px flex-1 bg-white/10" />
               </div>
               <motion.div variants={containerVariants} initial="hidden" animate="show" className="grid grid-cols-2 gap-3">
-                {section.items.map((product) => (
-                  <motion.article
-                    key={product.id}
-                    variants={itemVariants}
-                    whileHover={{ y: -5, scale: 1.01 }}
-                    onClick={() => {
-                      if (isMeat(product)) {
-                        openMeatSelection(product);
-                      }
-                    }}
-                    className={`group overflow-hidden rounded-2xl border border-[#1A1A1A] bg-[#080808] shadow-[0_6px_20px_rgba(0,0,0,0.35)] ${isMeat(product) ? "cursor-pointer" : ""}`}
-                  >
-                    <div className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-transparent">
-                      <img src={product.image} alt={product.name} className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105" loading="lazy" />
-                      {promotionProductSet.has(product.id) ? (
-                        <div className="absolute left-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black uppercase text-black shadow-[0_0_15px_rgba(178,255,0,0.55)]">
-                          Promo
-                        </div>
-                      ) : null}
-                      {quantityMap.get(product.id) ? <div className="absolute right-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black text-black">{formatQuantityLabel(quantityMap.get(product.id) || 0, product)} no carrinho</div> : null}
-                    </div>
-                    <div className="p-2.5">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{product.category}</p>
-                      <h2 className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-tight">{product.name}</h2>
-                      {isMeat(product) && (
-                        <div className="mt-1.5">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openMeatSelection(product);
-                            }}
-                            className="w-full rounded-lg border border-[#1A1A1A] bg-black/60 py-1.5 text-[10px] font-semibold text-zinc-300"
-                          >
-                            Escolher corte e kg
-                          </button>
-                          <p className="mt-1 text-[10px] text-[#B2FF00]">Corte atual: {getMeatCut(product.id)}</p>
-                        </div>
-                      )}
-                      <div className="mt-2 flex items-center justify-between">
-                        <strong className="text-sm font-black text-[#B2FF00]">{formatCurrency(product.price)}</strong>
-                        {isMeat(product) ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              openMeatSelection(product);
-                            }}
-                            className="rounded-full border border-[#1A1A1A] px-3 py-1 text-[10px] font-semibold text-zinc-300"
-                          >
-                            Selecionar
-                          </button>
-                        ) : (
-                          <div className="flex items-center gap-1">
-                            <button type="button" onClick={() => decrementFromCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A]" aria-label="Diminuir"><Minus size={13} /></button>
-                            <button type="button" onClick={() => addToCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full bg-[#00AAFF] text-black" aria-label="Adicionar"><Plus size={13} /></button>
+                {section.items.map((product) => {
+                  const effectivePrice = getEffectiveProductPrice(product);
+                  const hasPromotionPrice = promotionPriceMap.has(product.id);
+                  return (
+                    <motion.article
+                      key={product.id}
+                      variants={itemVariants}
+                      whileHover={{ y: -5, scale: 1.01 }}
+                      onClick={() => {
+                        if (isMeat(product)) {
+                          openMeatSelection(product);
+                        }
+                      }}
+                      className={`group overflow-hidden rounded-2xl border border-[#1A1A1A] bg-[#080808] shadow-[0_6px_20px_rgba(0,0,0,0.35)] ${isMeat(product) ? "cursor-pointer" : ""}`}
+                    >
+                      <div className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-transparent">
+                        <img src={product.image} alt={product.name} className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105" loading="lazy" />
+                        {promotionProductSet.has(product.id) ? (
+                          <div className="absolute left-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black uppercase text-black shadow-[0_0_15px_rgba(178,255,0,0.55)]">
+                            Promo
+                          </div>
+                        ) : null}
+                        {quantityMap.get(product.id) ? <div className="absolute right-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black text-black">{formatQuantityLabel(quantityMap.get(product.id) || 0, product)} no carrinho</div> : null}
+                      </div>
+                      <div className="p-2.5">
+                        <p className="text-[10px] uppercase tracking-[0.12em] text-zinc-500">{product.category}</p>
+                        <h2 className="mt-1 line-clamp-2 min-h-10 text-sm font-semibold leading-tight">{product.name}</h2>
+                        {isMeat(product) && (
+                          <div className="mt-1.5">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openMeatSelection(product);
+                              }}
+                              className="w-full rounded-lg border border-[#1A1A1A] bg-black/60 py-1.5 text-[10px] font-semibold text-zinc-300"
+                            >
+                              Escolher corte e kg
+                            </button>
+                            <p className="mt-1 text-[10px] text-[#B2FF00]">Corte atual: {getMeatCut(product.id)}</p>
                           </div>
                         )}
+                        <div className="mt-2 flex items-center justify-between">
+                          <div className="flex flex-col">
+                            {hasPromotionPrice ? <span className="text-[10px] text-zinc-500 line-through">{formatCurrency(product.price)}</span> : null}
+                            <strong className="text-sm font-black text-[#B2FF00]">{formatCurrency(effectivePrice)}</strong>
+                          </div>
+                          {isMeat(product) ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openMeatSelection(product);
+                              }}
+                              className="rounded-full border border-[#1A1A1A] px-3 py-1 text-[10px] font-semibold text-zinc-300"
+                            >
+                              Selecionar
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <button type="button" onClick={() => decrementFromCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full border border-[#1A1A1A]" aria-label="Diminuir"><Minus size={13} /></button>
+                              <button type="button" onClick={() => addToCart(product.id)} className="grid h-7 w-7 place-items-center rounded-full bg-[#00AAFF] text-black" aria-label="Adicionar"><Plus size={13} /></button>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </motion.article>
-                ))}
+                    </motion.article>
+                  );
+                })}
               </motion.div>
             </section>
           ))}
@@ -1108,7 +1163,7 @@ export default function StorefrontClient() {
               </div>
               <div className="grid gap-2">
                 <button type="button" onClick={() => { setCategoryFilter("todos"); setCategorySidebarOpen(false); }} className={`rounded-xl border px-3 py-2 text-left text-sm font-semibold ${categoryFilter === "todos" ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A] text-zinc-300"}`}>Todos</button>
-                {displayCategories.map((category) => (
+                {visibleDisplayCategories.map((category) => (
                   <button key={category.key} type="button" onClick={() => { setCategoryFilter(category.key); setCategorySidebarOpen(false); }} className={`rounded-xl border px-3 py-2 text-left text-sm font-semibold ${categoryFilter === category.key ? "border-[#B2FF00] bg-[#B2FF00]/10 text-[#B2FF00]" : "border-[#1A1A1A] text-zinc-300"}`}>{category.label}</button>
                 ))}
               </div>
@@ -1144,7 +1199,7 @@ export default function StorefrontClient() {
                         <div key={item.productId} className="mb-2 rounded-xl border border-[#1A1A1A] p-2 text-sm">
                           <div className="flex items-center justify-between gap-2">
                             <span className="line-clamp-1">{product.name}</span>
-                            <span>{formatCurrency(product.price * item.quantity)}</span>
+                            <span>{formatCurrency(getEffectiveProductPrice(product) * item.quantity)}</span>
                           </div>
                           {item.meatCut && (
                             <p className="mt-0.5 text-[10px] font-semibold text-[#B2FF00]">Corte: {item.meatCut}</p>
