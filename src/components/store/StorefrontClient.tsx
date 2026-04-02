@@ -34,6 +34,7 @@ import {
   User,
   X,
   Bell,
+  Tag,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CustomerAlert } from "@/types/domain";
@@ -812,7 +813,7 @@ export default function StorefrontClient() {
   }
 
   return (
-    <div className="min-h-screen bg-black pb-52 text-white">
+    <div className="min-h-screen bg-black pb-28 text-white">
       <header className="sticky top-0 z-30 border-b border-[#1A1A1A] bg-black/85 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto flex w-full max-w-md items-center gap-1.5 sm:gap-2">
           <button
@@ -839,6 +840,17 @@ export default function StorefrontClient() {
           <div className="flex items-center gap-1.5 shrink-0 sm:gap-2">
             <button type="button" onClick={() => setAccountOpen(true)} className="rounded-full border border-[#1A1A1A] p-1.5 sm:p-2" aria-label="Perfil">
               <User size={17} />
+            </button>
+            <button
+              type="button"
+              onClick={() => { setCategoryFilter("promocoes"); setCurrentProductsPage(1); setCategorySidebarOpen(false); }}
+              className="relative rounded-full bg-[#B2FF00] p-1.5 text-black shadow-[0_0_14px_rgba(178,255,0,0.5)] sm:p-2"
+              aria-label="Ver promoções"
+            >
+              <Tag size={17} />
+              {settings.promotionProductIds.length > 0 && (
+                <span className="absolute -right-1 -top-1 grid h-4 w-4 place-items-center rounded-full bg-[#FF4400] text-[9px] font-bold text-white">{settings.promotionProductIds.length}</span>
+              )}
             </button>
             <button
               type="button"
@@ -994,6 +1006,33 @@ export default function StorefrontClient() {
           ))}
 
         </div>
+
+        {searchedProducts.length > 0 ? (
+          <div className="mt-4 rounded-xl border border-[#1A1A1A] bg-[#080808] px-3 py-2">
+            <div className="flex items-center justify-between gap-2 text-xs text-zinc-400">
+              <span>Pagina {currentProductsPage} de {totalProductsPages}</span>
+              <span>{searchedProducts.length} produto(s)</span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentProductsPage((current) => Math.max(1, current - 1))}
+                disabled={currentProductsPage <= 1}
+                className="rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                ← Voltar
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentProductsPage((current) => Math.min(totalProductsPages, current + 1))}
+                disabled={currentProductsPage >= totalProductsPages}
+                className="rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Próxima →
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {searchedProducts.length === 0 ? <p className="mt-4 rounded-xl border border-[#1A1A1A] bg-[#080808] px-3 py-3 text-center text-sm text-zinc-500">Nenhum produto encontrado com esse termo de busca.</p> : null}
       </main>
@@ -1389,32 +1428,7 @@ export default function StorefrontClient() {
 
       {checkoutDone ? <div className="fixed bottom-4 left-1/2 z-40 w-[92%] max-w-md -translate-x-1/2 rounded-xl border border-[#1A1A1A] bg-[#080808] p-3 text-center text-sm">Pedido enviado com sucesso. Em breve voce recebera atualizacoes do status.</div> : null}
 
-      {searchedProducts.length > 0 ? (
-        <div className="fixed bottom-[4.9rem] left-1/2 z-30 w-[92%] max-w-md -translate-x-1/2 rounded-xl border border-[#1A1A1A] bg-[#080808] px-3 py-2">
-          <div className="flex items-center justify-between gap-2 text-xs text-zinc-400">
-            <span>Pagina {currentProductsPage} de {totalProductsPages}</span>
-            <span>{searchedProducts.length} produto(s)</span>
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setCurrentProductsPage((current) => Math.max(1, current - 1))}
-              disabled={currentProductsPage <= 1}
-              className="rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              ← Voltar
-            </button>
-            <button
-              type="button"
-              onClick={() => setCurrentProductsPage((current) => Math.min(totalProductsPages, current + 1))}
-              disabled={currentProductsPage >= totalProductsPages}
-              className="rounded-xl border border-[#1A1A1A] py-2 text-sm disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Próxima →
-            </button>
-          </div>
-        </div>
-      ) : null}
+
 
       <button type="button" onClick={() => { setCartOpen(true); setStep(1); setCheckoutError(""); }} className="fixed bottom-5 left-1/2 z-30 w-[92%] max-w-md -translate-x-1/2 rounded-xl bg-[#00AAFF] py-3 text-sm font-black text-black shadow-[0_0_25px_rgba(0,170,255,0.35)]">
         Abrir checkout ({cartCount})
