@@ -82,14 +82,14 @@ export async function getAdminSettingsRemote(): Promise<AdminSettings> {
   };
 }
 
-export async function saveAdminSettingsRemote(settings: AdminSettings): Promise<AdminSettings> {
+export async function saveAdminSettingsRemote(settings: AdminSettings): Promise<AdminSettings | null> {
   const remote = unwrapData<AdminSettings>(
     await apiFetch<unknown>("/api/settings", {
       method: "PUT",
       body: JSON.stringify(settings),
     }),
   );
-  return remote || settings;
+  return remote || null;
 }
 
 export async function registerCustomerRemote(account: CustomerAccount): Promise<CustomerAccount> {

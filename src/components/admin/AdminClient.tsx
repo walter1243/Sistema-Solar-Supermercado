@@ -473,7 +473,7 @@ export default function AdminClient() {
         setSettings(nextSettings);
         try {
           const saved = await saveAdminSettingsRemote(nextSettings);
-          setSettings(saved);
+          if (saved) setSettings(saved);
         } catch {
           // Keep local state when remote settings update is unavailable.
         }
@@ -567,7 +567,7 @@ export default function AdminClient() {
 
     try {
       const saved = await saveAdminSettingsRemote(nextSettings);
-      setSettings(saved);
+      if (saved) setSettings(saved);
       setAdminNotice({ type: "success", text: "Promocao publicada com periodo e preços promocionais." });
     } catch {
       setAdminNotice({ type: "error", text: "Nao foi possivel lancar a promocao agora." });
@@ -584,11 +584,17 @@ export default function AdminClient() {
     setNewCategory("");
     try {
       const saved = await saveAdminSettingsRemote(next);
-      setSettings(saved);
+      if (saved) {
+        setSettings(saved);
+        setAdminNotice({ type: "success", text: `Categoria "${trimmed}" salva com sucesso.` });
+      } else {
+        setSettings(settings);
+        setAdminNotice({ type: "error", text: `Erro ao salvar categoria "${trimmed}". Tente novamente.` });
+      }
     } catch {
-      // Keep local state when remote settings update is unavailable.
+      setSettings(settings);
+      setAdminNotice({ type: "error", text: `Erro ao salvar categoria "${trimmed}". Tente novamente.` });
     }
-    setAdminNotice({ type: "info", text: `Categoria ${trimmed} adicionada.` });
   }
 
   async function handleDeleteCategory(categoryToDelete: string) {
@@ -614,7 +620,7 @@ export default function AdminClient() {
 
     try {
       const saved = await saveAdminSettingsRemote(nextSettings);
-      setSettings(saved);
+      if (saved) setSettings(saved);
     } catch {
       // Keep local state when remote settings update is unavailable.
     }
@@ -648,7 +654,7 @@ export default function AdminClient() {
     });
 
     const nextSettings = await saveAdminSettingsRemote(normalizedSettings);
-    setSettings(nextSettings);
+    if (nextSettings) setSettings(nextSettings);
     setAdminAccounts(await listAdminUsersRemote());
 
     setAdminNotice({ type: "success", text: "Perfil e configuracoes do painel atualizados." });
@@ -1086,8 +1092,14 @@ export default function AdminClient() {
                   <div className="rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
                     <h2 className="text-lg font-bold">Categorias</h2>
                     <div className="mt-3 flex gap-2">
-                      <input value={newCategory} onChange={(event) => setNewCategory(event.target.value)} placeholder="Nova categoria" className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm" />
-                      <button type="button" onClick={handleAddCategory} className="rounded-xl bg-[#00AAFF] px-4 py-2 text-sm font-black text-black">Adicionar</button>
+                      <input
+                        value={newCategory}
+                        onChange={(event) => setNewCategory(event.target.value)}
+                        onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void handleAddCategory(); } }}
+                        placeholder="Nova categoria"
+                        className="w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                      />
+                      <button type="button" onClick={() => void handleAddCategory()} className="rounded-xl bg-[#00AAFF] px-4 py-2 text-sm font-black text-black">Adicionar</button>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {settings.categories.map((category) => (
