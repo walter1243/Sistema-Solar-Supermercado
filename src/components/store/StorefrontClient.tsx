@@ -941,6 +941,11 @@ export default function StorefrontClient() {
                   >
                     <div className="relative flex h-28 w-full items-center justify-center overflow-hidden rounded-t-2xl bg-transparent">
                       <img src={product.image} alt={product.name} className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105" loading="lazy" />
+                      {promotionProductSet.has(product.id) ? (
+                        <div className="absolute left-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black uppercase text-black shadow-[0_0_15px_rgba(178,255,0,0.55)]">
+                          Promo
+                        </div>
+                      ) : null}
                       {quantityMap.get(product.id) ? <div className="absolute right-2 top-2 rounded-full bg-[#B2FF00] px-2 py-0.5 text-[10px] font-black text-black">{formatQuantityLabel(quantityMap.get(product.id) || 0, product)} no carrinho</div> : null}
                     </div>
                     <div className="p-2.5">
