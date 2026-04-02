@@ -181,8 +181,50 @@ export default function StorefrontClient() {
           reference: session.reference || "",
         });
       }
-      setProducts(await getProductsCatalog());
-      setSettings(await getAdminSettingsRemote());
+      const remoteProducts = await getProductsCatalog();
+      if (remoteProducts.length > 0) {
+        setProducts(remoteProducts);
+        try {
+          localStorage.setItem("solar_cached_products_v1", JSON.stringify(remoteProducts));
+        } catch {
+          // Ignore storage issues.
+        }
+      } else {
+        try {
+          const cachedProductsRaw = localStorage.getItem("solar_cached_products_v1");
+          if (cachedProductsRaw) {
+            const cachedProducts = JSON.parse(cachedProductsRaw) as Product[];
+            if (Array.isArray(cachedProducts) && cachedProducts.length > 0) {
+              setProducts(cachedProducts);
+            }
+          }
+        } catch {
+          // Ignore cache parsing issues.
+        }
+      }
+
+      const remoteSettings = await getAdminSettingsRemote();
+      if ((remoteSettings.categories || []).length > 0) {
+        setSettings(remoteSettings);
+        try {
+          localStorage.setItem("solar_cached_settings_v1", JSON.stringify(remoteSettings));
+        } catch {
+          // Ignore storage issues.
+        }
+      } else {
+        try {
+          const cachedSettingsRaw = localStorage.getItem("solar_cached_settings_v1");
+          if (cachedSettingsRaw) {
+            const cachedSettings = JSON.parse(cachedSettingsRaw) as AdminSettings;
+            if (cachedSettings && Array.isArray(cachedSettings.categories) && cachedSettings.categories.length > 0) {
+              setSettings(cachedSettings);
+            }
+          }
+        } catch {
+          // Ignore cache parsing issues.
+        }
+      }
+
       setOrders(await getOrdersForAdmin());
     };
 
@@ -451,45 +493,34 @@ export default function StorefrontClient() {
     return [promoEntry, ...catEntries];
   }, [settings.categories]);
 
-  // Ranking por unidades vendidas em todos os pedidos
-  const productSalesMap = useMemo(() => {
-    const map = new Map<string, number>();
-    orders.forEach((order) => {
-      order.items.forEach((item) => {
-        map.set(item.productId, (map.get(item.productId) ?? 0) + item.quantity);
-      });
-    });
-    return map;
-  }, [orders]);
-
-  // Produtos ordenados do mais para o menos vendido
-  const rankedProducts = useMemo(
-    () => [...products].sort((a, b) => (productSalesMap.get(b.id) ?? 0) - (productSalesMap.get(a.id) ?? 0)),
-    [products, productSalesMap],
-  );
-
   const searchedProducts = useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
-    return rankedProducts.filter((product) => {
+    return products.filter((product) => {
       const matchSearch = !searchTerm || product.name.toLowerCase().includes(searchTerm);
       if (!matchSearch) return false;
       if (categoryFilter === "todos") return true;
       if (categoryFilter === "promocoes") return promotionProductSet.has(product.id);
       return normalizeCategory(product.category) === categoryFilter;
     });
-  }, [rankedProducts, search, categoryFilter, promotionProductSet]);
+  }, [products, search, categoryFilter, promotionProductSet]);
 
   const visibleDisplayCategories = useMemo(
     () => dynamicDisplayCategories.filter((category) => category.key !== "promocoes" || promotionProductSet.size > 0),
     [dynamicDisplayCategories, promotionProductSet.size],
   );
 
-  const totalProductsPages = useMemo(() => Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE)), [searchedProducts.length]);
+  const shouldLimitCategoryGrid = categoryFilter === "todos" && !search.trim();
+
+  const totalProductsPages = useMemo(() => {
+    if (shouldLimitCategoryGrid) return 1;
+    return Math.max(1, Math.ceil(searchedProducts.length / PRODUCTS_PER_PAGE));
+  }, [searchedProducts.length, shouldLimitCategoryGrid]);
 
   const paginatedProducts = useMemo(() => {
+    if (shouldLimitCategoryGrid) return searchedProducts;
     const start = (currentProductsPage - 1) * PRODUCTS_PER_PAGE;
     return searchedProducts.slice(start, start + PRODUCTS_PER_PAGE);
-  }, [currentProductsPage, searchedProducts]);
+  }, [currentProductsPage, searchedProducts, shouldLimitCategoryGrid]);
 
   useEffect(() => {
     setCurrentProductsPage(1);
@@ -515,13 +546,15 @@ export default function StorefrontClient() {
     paginatedProducts.forEach((product) => {
       const section = getSectionName(product.category);
       const list = groups.get(section) || [];
-      list.push(product);
+      if (!shouldLimitCategoryGrid || list.length < 4) {
+        list.push(product);
+      }
       groups.set(section, list);
     });
 
     const order = [...settings.categories, "Outros"];
     return order.map((name) => ({ name, items: groups.get(name) || [] })).filter((section) => section.items.length > 0);
-  }, [categoryFilter, paginatedProducts, settings.categories]);
+  }, [categoryFilter, paginatedProducts, settings.categories, shouldLimitCategoryGrid]);
 
   const latestTrackedOrder = useMemo(() => {
     if (lastOrderId) {
