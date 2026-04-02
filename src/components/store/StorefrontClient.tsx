@@ -788,45 +788,47 @@ export default function StorefrontClient() {
   return (
     <div className="min-h-screen bg-black pb-36 text-white">
       <header className="sticky top-0 z-30 border-b border-[#1A1A1A] bg-black/85 px-4 py-3 backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-md items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setCategorySidebarOpen(true)}
-            className="flex h-16 w-44 items-center justify-center bg-transparent px-0"
-            aria-label="Abrir categorias"
-          >
-            <Image
-              src="/image-removebg-preview.png"
-              alt="Solar Supermercado"
-              width={173}
-              height={55}
-              priority
-              className="h-14 w-auto max-w-full object-contain"
-            />
-          </button>
-
-          <div className="relative flex-1">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto" className="w-full rounded-xl border border-[#1A1A1A] bg-black py-2 pl-9 pr-3 text-sm" />
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <button type="button" onClick={() => setAccountOpen(true)} className="rounded-full border border-[#1A1A1A] p-2" aria-label="Perfil">
-              <User size={18} />
-            </button>
+        <div className="mx-auto w-full max-w-md space-y-2">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                setCartOpen(true);
-                setStep(1);
-                setCheckoutError("");
-              }}
-              className="relative rounded-full bg-[#B2FF00] p-2 text-black"
-              aria-label="Abrir carrinho"
+              onClick={() => setCategorySidebarOpen(true)}
+              className="flex h-16 w-44 items-center justify-center bg-transparent px-0"
+              aria-label="Abrir categorias"
             >
-              <ShoppingCart size={18} />
-              {cartCount > 0 && <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#00AAFF] text-xs font-bold text-black">{cartCount}</span>}
+              <Image
+                src="/image-removebg-preview.png"
+                alt="Solar Supermercado"
+                width={173}
+                height={55}
+                priority
+                className="h-14 w-auto max-w-full object-contain"
+              />
             </button>
+
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <button type="button" onClick={() => setAccountOpen(true)} className="rounded-full border border-[#1A1A1A] p-2" aria-label="Perfil">
+                <User size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCartOpen(true);
+                  setStep(1);
+                  setCheckoutError("");
+                }}
+                className="relative rounded-full bg-[#B2FF00] p-2 text-black"
+                aria-label="Abrir carrinho"
+              >
+                <ShoppingCart size={18} />
+                {cartCount > 0 && <span className="absolute -right-1 -top-1 grid h-5 w-5 place-items-center rounded-full bg-[#00AAFF] text-xs font-bold text-black">{cartCount}</span>}
+              </button>
+            </div>
+          </div>
+
+          <div className="relative">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar produto" className="w-full rounded-xl border border-[#1A1A1A] bg-black py-2 pl-9 pr-3 text-sm" />
           </div>
         </div>
       </header>
