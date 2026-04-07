@@ -268,11 +268,10 @@ export default function AdminClient() {
   const promotionAvailableProducts = useMemo(() => {
     const query = promotionSearch.trim().toLowerCase();
     return products.filter((product) => {
-      if (promotionDraftSet.has(product.id)) return false;
       if (!query) return true;
       return product.name.toLowerCase().includes(query);
     });
-  }, [products, promotionDraftSet, promotionSearch]);
+  }, [products, promotionSearch]);
 
   const promotionDateStatus = useMemo(() => {
     if (!promotionDraftProductIds.length) return "Nenhuma promoção montada.";
@@ -487,12 +486,21 @@ export default function AdminClient() {
 
   function handleAddPromotionDraftProduct(productId: string) {
       const product = products.find((item) => item.id === productId);
+      const alreadyInDraft = promotionDraftSet.has(productId);
+
       setPromotionDraftProductIds((current) => (current.includes(productId) ? current : [...current, productId]));
+
       if (product) {
         setPromotionDraftPrices((current) => ({
           ...current,
           [productId]: Number.isFinite(current[productId]) ? current[productId] : product.price,
         }));
+      }
+
+      if (alreadyInDraft && product) {
+        setPromotionPriceEditProductId(product.id);
+        setPromotionPriceEditValue(String(promotionDraftPrices[product.id] ?? product.price));
+        setAdminNotice({ type: "info", text: `${product.name} ja estava na promocao. Voce pode ajustar o preco novamente.` });
       }
   }
 
@@ -1152,21 +1160,23 @@ export default function AdminClient() {
 
                     <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
                       {promotionAvailableProducts.length === 0 ? (
-                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto disponivel para adicionar.</p>
+                        <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-400">Nenhum produto encontrado para este filtro.</p>
                       ) : (
-                        promotionAvailableProducts.map((product) => (
+                        promotionAvailableProducts.map((product) => {
+                          const alreadySelected = promotionDraftSet.has(product.id);
+                          return (
                           <div key={product.id} className="flex items-center gap-2 rounded-xl border border-[#1A1A1A] bg-black/60 px-2 py-2 text-sm">
                             <img src={product.image} alt={product.name} className="h-9 w-9 rounded-lg object-cover" />
                             <span className="line-clamp-1 flex-1">{product.name}</span>
                             <button
                               type="button"
                               onClick={() => handleAddPromotionDraftProduct(product.id)}
-                              className="rounded-lg border border-[#00AAFF] px-2 py-1 text-xs text-[#00AAFF]"
+                              className={`rounded-lg px-2 py-1 text-xs ${alreadySelected ? "border border-[#B2FF00] text-[#B2FF00]" : "border border-[#00AAFF] text-[#00AAFF]"}`}
                             >
-                              Adicionar
+                              {alreadySelected ? "Adicionar novamente" : "Adicionar"}
                             </button>
                           </div>
-                        ))
+                        );})
                       )}
                     </div>
 
