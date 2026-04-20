@@ -2569,7 +2569,7 @@ export default function AdminClient() {
                     className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
                 </label>
-                <label className="text-xs text-zinc-400">
+                <label className="text-xs text-zinc-400 sm:col-span-2">
                   Valor pago
                   <input
                     type="number"
