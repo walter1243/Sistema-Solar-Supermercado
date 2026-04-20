@@ -1,0 +1,11 @@
+{
+  "project": "solar-supermercado",
+  "productionUrl": "https://solar-supermercado.vercel.app",
+  "adminUrl": "https://solar-supermercado.vercel.app/admin",
+  "vercelProjectName": "solar-supermercado",
+  "githubRepository": "https://github.com/walter1243/Sistema-Solar-Supermercado",
+  "notes": [
+    "Sempre validar alteracoes neste dominio de producao.",
+    "Deploy de producao: npx vercel --prod --yes"
+  ]
+}
