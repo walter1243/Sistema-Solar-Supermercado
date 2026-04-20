@@ -1310,7 +1310,7 @@ export default function AdminClient() {
       payerName: account.payerName,
       holderName: account.holderName || "",
       duplicateNumber: account.duplicateNumber,
-      paymentDate: account.paymentDate,
+      paymentDate: account.paymentDate || new Date(account.createdAt).toISOString().slice(0, 10),
       dueDate: account.dueDate,
       paidAmount: String(account.paidAmount),
       paymentMethod: account.paymentMethod,
@@ -2553,6 +2553,8 @@ export default function AdminClient() {
                     type="date"
                     value={editingReceivableForm.paymentDate}
                     onChange={(event) => setEditingReceivableForm((current) => ({ ...current, paymentDate: event.target.value }))}
+                    onFocus={(event) => event.currentTarget.showPicker?.()}
+                    onClick={(event) => event.currentTarget.showPicker?.()}
                     className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
                 </label>
@@ -2562,6 +2564,8 @@ export default function AdminClient() {
                     type="date"
                     value={editingReceivableForm.dueDate}
                     onChange={(event) => setEditingReceivableForm((current) => ({ ...current, dueDate: event.target.value }))}
+                    onFocus={(event) => event.currentTarget.showPicker?.()}
+                    onClick={(event) => event.currentTarget.showPicker?.()}
                     className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
                 </label>
