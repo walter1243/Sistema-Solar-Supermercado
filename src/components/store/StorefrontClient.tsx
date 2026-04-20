@@ -118,6 +118,8 @@ export default function StorefrontClient() {
     pickupMinimum: DEFAULT_PICKUP_MINIMUM,
     cashbackSpendThreshold: 0,
     cashbackRewardValue: 0,
+    cardDebitFeePercent: 3,
+    cardCreditFeePercent: 5,
   });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [search, setSearch] = useState("");
