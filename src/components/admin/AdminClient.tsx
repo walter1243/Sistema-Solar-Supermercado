@@ -2,6 +2,10 @@
 
 import { jsPDF } from "jspdf";
 import {
+  createCashierRemote,
+  createReceivableAccountRemote,
+  updateReceivableAccountRemote,
+  deleteCashierRemote,
   createAdminUserRemote,
   clearAdminSessionRemote,
   createProduct,
@@ -12,6 +16,8 @@ import {
   getDashboardSummary,
   getDeliveryList,
   getCustomersForAdmin,
+  listCashiersRemote,
+  listReceivableAccountsRemote,
   getOrdersForAdmin,
   getProductsCatalog,
   listAdminUsersRemote,
@@ -22,10 +28,11 @@ import {
   updateProductRemote,
   updateOrderStatusRemote,
 } from "@/lib/api";
-import { AdminSettings, AdminUser, CustomerAccount, DashboardSummary, Order, Product } from "@/types/domain";
+import { AdminSettings, AdminUser, Cashier, CustomerAccount, DashboardSummary, Order, Product, ReceivableAccount } from "@/types/domain";
 import {
   ChartNoAxesColumn,
   Download,
+  Edit,
   Eye,
   EyeOff,
   ImagePlus,
@@ -44,6 +51,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Info,
+  Landmark,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -51,7 +59,9 @@ import { type ComponentType, useEffect, useMemo, useRef, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import { ProductUnit } from "@/types/domain";
 
-type Tab = "dashboard" | "produtos" | "pedidos" | "entregas" | "clientes";
+type Tab = "dashboard" | "produtos" | "pedidos" | "entregas" | "clientes" | "receber_contas";
+type ReceivablePanelTab = "cadastro_caixa" | "controle_contas";
+type ReceivableFilterMode = "diario" | "mensal" | "anual";
 
 type ProductFormState = {
   name: string;
@@ -78,6 +88,7 @@ const tabs: Array<{ id: Tab; label: string; icon: ComponentType<{ size?: number 
   { id: "pedidos", label: "Pedidos", icon: ReceiptText },
   { id: "entregas", label: "Entregas", icon: Truck },
   { id: "clientes", label: "Clientes", icon: Users },
+  { id: "receber_contas", label: "Receber Contas", icon: Landmark },
 ];
 
 const initialProduct: ProductFormState = {
@@ -154,6 +165,8 @@ export default function AdminClient() {
     pickupMinimum: 100,
     cashbackSpendThreshold: 0,
     cashbackRewardValue: 0,
+    cardDebitFeePercent: 3,
+    cardCreditFeePercent: 5,
   });
   const [productForm, setProductForm] = useState<ProductFormState>(initialProduct);
   const [productSearch, setProductSearch] = useState("");
@@ -180,6 +193,51 @@ export default function AdminClient() {
   const [promotionPriceEditProductId, setPromotionPriceEditProductId] = useState<string | null>(null);
   const [promotionPriceEditValue, setPromotionPriceEditValue] = useState("");
   const [isLaunchingPromotion, setIsLaunchingPromotion] = useState(false);
+  const [cashiers, setCashiers] = useState<Cashier[]>([]);
+  const [selectedCashierId, setSelectedCashierId] = useState("");
+  const [newCashierName, setNewCashierName] = useState("");
+  const [isSavingCashier, setIsSavingCashier] = useState(false);
+  const [isSavingReceivable, setIsSavingReceivable] = useState(false);
+  const [receivableAccounts, setReceivableAccounts] = useState<ReceivableAccount[]>([]);
+  const [receivablePanelTab, setReceivablePanelTab] = useState<ReceivablePanelTab>("cadastro_caixa");
+  const [receivableFilterMode, setReceivableFilterMode] = useState<ReceivableFilterMode>("diario");
+  const [receivableFilterDate, setReceivableFilterDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [receivableFilterMonth, setReceivableFilterMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [receivableFilterYear, setReceivableFilterYear] = useState(() => String(new Date().getFullYear()));
+  const [receivableSearch, setReceivableSearch] = useState("");
+  const [receivableFeePopupOpen, setReceivableFeePopupOpen] = useState(false);
+  const [receivableDebitFeeDraft, setReceivableDebitFeeDraft] = useState("3");
+  const [receivableCreditFeeDraft, setReceivableCreditFeeDraft] = useState("5");
+  const [receivableForm, setReceivableForm] = useState({
+    invoiceTotal: "",
+    payerType: "titular" as "titular" | "fiador",
+    payerName: "",
+    holderName: "",
+    duplicateNumber: "",
+    dueDate: new Date().toISOString().slice(0, 10),
+    paidAmount: "",
+    paymentMethod: "pix",
+  });
+  const [editingReceivableId, setEditingReceivableId] = useState<string | null>(null);
+  const [editingReceivableForm, setEditingReceivableForm] = useState({
+    invoiceTotal: "",
+    payerType: "titular" as "titular" | "fiador",
+    payerName: "",
+    holderName: "",
+    duplicateNumber: "",
+    dueDate: "",
+    paidAmount: "",
+    paymentMethod: "",
+  });
+  const [isEditingReceivable, setIsEditingReceivable] = useState<boolean | "loading">(false);
+
+  const receivablePaymentMethods = [
+    { value: "pix", label: "Pix" },
+    { value: "dinheiro", label: "Dinheiro" },
+    { value: "cartao_debito", label: "Cartao debito" },
+    { value: "cartao_credito", label: "Cartao credito" },
+    { value: "servico_prestado", label: "Serviço prestado" },
+  ] as const;
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -220,6 +278,23 @@ export default function AdminClient() {
     setPromotionDraftPrices(settings.promotionPrices || {});
   }, [settings.promotionProductIds, settings.promotionStartDate, settings.promotionEndDate, settings.promotionPrices]);
 
+  useEffect(() => {
+    if (!cashiers.length) {
+      setSelectedCashierId("");
+      return;
+    }
+
+    if (!cashiers.some((cashier) => cashier.id === selectedCashierId)) {
+      setSelectedCashierId(cashiers[0].id);
+    }
+  }, [cashiers, selectedCashierId]);
+
+  useEffect(() => {
+    if (!receivableFeePopupOpen) return;
+    setReceivableDebitFeeDraft(String(Number(settings.cardDebitFeePercent ?? 3)));
+    setReceivableCreditFeeDraft(String(Number(settings.cardCreditFeePercent ?? 5)));
+  }, [receivableFeePopupOpen, settings.cardCreditFeePercent, settings.cardDebitFeePercent]);
+
   async function refreshAll() {
     setProducts(await getProductsCatalog());
     setOrders(await getOrdersForAdmin());
@@ -228,6 +303,8 @@ export default function AdminClient() {
     setSummary(await getDashboardSummary());
     setSettings(await getAdminSettingsRemote());
     setAdminAccounts(await listAdminUsersRemote());
+    setCashiers(await listCashiersRemote());
+    setReceivableAccounts(await listReceivableAccountsRemote());
   }
 
   const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Dashboard";
@@ -284,6 +361,213 @@ export default function AdminClient() {
     if (now > end) return "Promoção expirada (não aparece na loja).";
     return "Promoção ativa na loja.";
   }, [promotionDraftEndDate, promotionDraftProductIds.length, promotionDraftStartDate]);
+
+  const selectedCashier = useMemo(() => cashiers.find((cashier) => cashier.id === selectedCashierId) || null, [cashiers, selectedCashierId]);
+
+  const receivableDebitFeePercent = useMemo(() => Math.max(0, Number(settings.cardDebitFeePercent) || 0), [settings.cardDebitFeePercent]);
+  const receivableCreditFeePercent = useMemo(() => Math.max(0, Number(settings.cardCreditFeePercent) || 0), [settings.cardCreditFeePercent]);
+  const receivableBaseInvoiceTotal = useMemo(() => Math.max(0, Number(receivableForm.invoiceTotal) || 0), [receivableForm.invoiceTotal]);
+  const receivableAppliedFeePercent = useMemo(() => {
+    if (receivableForm.paymentMethod === "cartao_debito") return receivableDebitFeePercent;
+    if (receivableForm.paymentMethod === "cartao_credito") return receivableCreditFeePercent;
+    return 0;
+  }, [receivableCreditFeePercent, receivableDebitFeePercent, receivableForm.paymentMethod]);
+  const receivableInvoiceTotal = useMemo(() => {
+    const total = receivableBaseInvoiceTotal * (1 + receivableAppliedFeePercent / 100);
+    return Math.round(total * 100) / 100;
+  }, [receivableAppliedFeePercent, receivableBaseInvoiceTotal]);
+  const receivablePaidAmount = useMemo(() => Math.max(0, Number(receivableForm.paidAmount) || 0), [receivableForm.paidAmount]);
+  const receivableRemainingAmount = useMemo(() => Math.max(0, receivableInvoiceTotal - receivablePaidAmount), [receivableInvoiceTotal, receivablePaidAmount]);
+  const receivableChangeAmount = useMemo(() => Math.max(0, receivablePaidAmount - receivableInvoiceTotal), [receivableInvoiceTotal, receivablePaidAmount]);
+  const filteredReceivableAccounts = useMemo(() => {
+    const normalizeDate = (value: string) => {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return "";
+      return date.toISOString().slice(0, 10);
+    };
+
+    const query = receivableSearch.trim().toLowerCase();
+
+    return receivableAccounts.filter((account) => {
+      const paymentDate = normalizeDate(account.createdAt);
+      if (!paymentDate) return false;
+      const periodMatch = receivableFilterMode === "diario"
+        ? paymentDate === receivableFilterDate
+        : receivableFilterMode === "mensal"
+          ? paymentDate.slice(0, 7) === receivableFilterMonth
+          : paymentDate.slice(0, 4) === receivableFilterYear;
+
+      if (!periodMatch) return false;
+
+      if (!query) return true;
+      const searchable = `${account.payerName} ${account.duplicateNumber} ${account.cashierName} ${account.paymentMethod}`.toLowerCase();
+      return searchable.includes(query);
+    });
+  }, [receivableAccounts, receivableFilterDate, receivableFilterMode, receivableFilterMonth, receivableFilterYear, receivableSearch]);
+
+  const receivableFilterLabel = useMemo(() => {
+    if (receivableFilterMode === "diario") return `Diario ${receivableFilterDate}`;
+    if (receivableFilterMode === "mensal") return `Mensal ${receivableFilterMonth}`;
+    return `Anual ${receivableFilterYear}`;
+  }, [receivableFilterDate, receivableFilterMode, receivableFilterMonth, receivableFilterYear]);
+
+  const filteredReceivableTotal = useMemo(() => {
+    return filteredReceivableAccounts.reduce((sum, account) => sum + account.paidAmount, 0);
+  }, [filteredReceivableAccounts]);
+
+  const receivableExportRows = useMemo(() => {
+    return filteredReceivableAccounts.map((account) => ({
+      dataPagamento: new Date(account.createdAt).toLocaleDateString("pt-BR"),
+      duplicata: account.duplicateNumber,
+      pagador: account.payerName,
+      tipo: account.payerType,
+      titular: account.holderName || "-",
+      vencimento: new Date(`${account.dueDate}T00:00:00`).toLocaleDateString("pt-BR"),
+      nota: account.invoiceTotal,
+      pago: account.paidAmount,
+      restante: account.remainingAmount,
+      troco: account.changeAmount,
+      pagamento: account.paymentMethod,
+      caixa: account.cashierName,
+    }));
+  }, [filteredReceivableAccounts]);
+
+  function exportReceivablesToCSV() {
+    if (!receivableExportRows.length) {
+      setAdminNotice({ type: "error", text: "Nao ha registros para exportar no filtro atual." });
+      return;
+    }
+
+    const header = [
+      "Data Pagamento",
+      "Duplicata",
+      "Pagador",
+      "Tipo",
+      "Titular",
+      "Vencimento",
+      "Nota",
+      "Pago",
+      "Restante",
+      "Troco",
+      "Pagamento",
+      "Caixa",
+    ];
+
+    const lines = [
+      header.join(";"),
+      ...receivableExportRows.map((row) => [
+        row.dataPagamento,
+        row.duplicata,
+        row.pagador,
+        row.tipo,
+        row.titular,
+        row.vencimento,
+        row.nota.toFixed(2).replace(".", ","),
+        row.pago.toFixed(2).replace(".", ","),
+        row.restante.toFixed(2).replace(".", ","),
+        row.troco.toFixed(2).replace(".", ","),
+        row.pagamento,
+        row.caixa,
+      ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(";")),
+    ];
+
+    const blob = new Blob([`\uFEFF${lines.join("\n")}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `controle-contas-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    setAdminNotice({ type: "success", text: "Planilha CSV exportada com sucesso." });
+  }
+
+  function exportReceivablesToPDF() {
+    if (!receivableExportRows.length) {
+      setAdminNotice({ type: "error", text: "Nao ha registros para exportar no filtro atual." });
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 8;
+    const columns = [
+      { label: "Data", width: 17 },
+      { label: "Duplicata", width: 22 },
+      { label: "Pagador", width: 34 },
+      { label: "Tipo", width: 14 },
+      { label: "Titular", width: 34 },
+      { label: "Venc.", width: 17 },
+      { label: "Nota", width: 20 },
+      { label: "Pago", width: 20 },
+      { label: "Rest.", width: 20 },
+      { label: "Troco", width: 20 },
+      { label: "Pagto", width: 24 },
+      { label: "Caixa", width: 24 },
+    ];
+
+    let y = 10;
+    doc.setFontSize(12);
+    doc.text("Controle de Contas Recebidas", margin, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.text(`Filtro: ${receivableFilterLabel} | Registros: ${receivableExportRows.length} | Total pago: ${formatCurrency(filteredReceivableTotal)}`, margin, y);
+    y += 6;
+
+    const drawHeader = () => {
+      let x = margin;
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "bold");
+      columns.forEach((col) => {
+        doc.rect(x, y, col.width, 6);
+        doc.text(col.label, x + 1.5, y + 4);
+        x += col.width;
+      });
+      y += 6;
+      doc.setFont("helvetica", "normal");
+    };
+
+    drawHeader();
+
+    receivableExportRows.forEach((row) => {
+      if (y > pageHeight - 10) {
+        doc.addPage();
+        y = 10;
+        drawHeader();
+      }
+
+      const rowValues = [
+        row.dataPagamento,
+        row.duplicata,
+        row.pagador,
+        row.tipo,
+        row.titular,
+        row.vencimento,
+        formatCurrency(row.nota),
+        formatCurrency(row.pago),
+        formatCurrency(row.restante),
+        formatCurrency(row.troco),
+        row.pagamento,
+        row.caixa,
+      ];
+
+      let x = margin;
+      rowValues.forEach((value, index) => {
+        const width = columns[index].width;
+        doc.rect(x, y, width, 5.5);
+        doc.text(String(value).slice(0, 24), x + 1.2, y + 3.7, {
+          maxWidth: width - 2,
+        });
+        x += width;
+      });
+      y += 5.5;
+    });
+
+    doc.save(`controle-contas-${new Date().toISOString().slice(0, 10)}.pdf`);
+    setAdminNotice({ type: "success", text: "PDF do controle de contas exportado." });
+  }
 
   const totalProductsPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredProducts.length / PRODUCTS_PER_PAGE));
@@ -909,6 +1193,205 @@ export default function AdminClient() {
 
     setAdminNotice({ type: "success", text: "Alerta enviado para o cliente com sucesso." });
     setCustomerAlertForm({ customerId: "", title: "", message: "" });
+  }
+
+  async function handleCreateCashier(event: React.FormEvent) {
+    event.preventDefault();
+    if (isSavingCashier) return;
+
+    const name = newCashierName.trim();
+    if (!name) {
+      setAdminNotice({ type: "error", text: "Informe o nome do caixa." });
+      return;
+    }
+
+    setIsSavingCashier(true);
+    try {
+      const result = await createCashierRemote(name);
+      if (!result.cashier) {
+        setAdminNotice({ type: "error", text: result.error || "Nao foi possivel cadastrar o caixa." });
+        return;
+      }
+
+      setCashiers((current) => [...current, result.cashier as Cashier]);
+      setSelectedCashierId(result.cashier.id);
+      setNewCashierName("");
+      setAdminNotice({ type: "success", text: `Caixa ${result.cashier.name} cadastrado com sucesso.` });
+    } catch {
+      setAdminNotice({ type: "error", text: "Falha ao cadastrar caixa." });
+    } finally {
+      setIsSavingCashier(false);
+    }
+  }
+
+  async function handleDeleteCashier(cashier: Cashier) {
+    const confirmed = window.confirm(`Deseja excluir o caixa ${cashier.name}?`);
+    if (!confirmed) return;
+
+    const result = await deleteCashierRemote(cashier.id);
+    if (!result.success) {
+      setAdminNotice({ type: "error", text: result.error || "Nao foi possivel excluir o caixa." });
+      return;
+    }
+
+    setCashiers((current) => current.filter((item) => item.id !== cashier.id));
+    setAdminNotice({ type: "success", text: `Caixa ${cashier.name} excluido com sucesso.` });
+  }
+
+  async function handleSaveReceivableAccount(event: React.FormEvent) {
+    event.preventDefault();
+    if (isSavingReceivable) return;
+
+    if (!selectedCashier) {
+      setAdminNotice({ type: "error", text: "Cadastre e selecione um caixa antes de salvar a conta." });
+      return;
+    }
+
+    const payload = {
+      invoiceTotal: receivableInvoiceTotal,
+      payerType: receivableForm.payerType,
+      payerName: receivableForm.payerName.trim(),
+      holderName: receivableForm.payerType === "fiador" ? receivableForm.holderName.trim() : "",
+      duplicateNumber: receivableForm.duplicateNumber.trim(),
+      dueDate: receivableForm.dueDate,
+      paidAmount: receivablePaidAmount,
+      remainingAmount: receivableRemainingAmount,
+      changeAmount: receivableChangeAmount,
+      paymentMethod: receivableForm.paymentMethod.trim(),
+      cashierId: selectedCashier.id,
+      cashierName: selectedCashier.name,
+    };
+
+    if (!payload.payerName || !payload.duplicateNumber || !payload.dueDate || !payload.paymentMethod || payload.invoiceTotal <= 0) {
+      setAdminNotice({ type: "error", text: "Preencha os campos obrigatorios da conta." });
+      return;
+    }
+
+    if (payload.payerType === "fiador" && !payload.holderName) {
+      setAdminNotice({ type: "error", text: "Informe o titular quando o pagamento for em fiador." });
+      return;
+    }
+
+    setIsSavingReceivable(true);
+    try {
+      const result = await createReceivableAccountRemote(payload);
+      if (!result.account) {
+        setAdminNotice({ type: "error", text: result.error || "Nao foi possivel salvar a conta recebida." });
+        return;
+      }
+
+      setReceivableAccounts((current) => [result.account as ReceivableAccount, ...current]);
+      setReceivableForm({
+        invoiceTotal: "",
+        payerType: "titular",
+        payerName: "",
+        holderName: "",
+        duplicateNumber: "",
+        dueDate: new Date().toISOString().slice(0, 10),
+        paidAmount: "",
+        paymentMethod: "pix",
+      });
+      setReceivablePanelTab("controle_contas");
+      setAdminNotice({ type: "success", text: "Conta recebida registrada com sucesso." });
+    } finally {
+      setIsSavingReceivable(false);
+    }
+  }
+
+  function handleOpenEditReceivableAccount(account: ReceivableAccount) {
+    setEditingReceivableId(account.id);
+    setEditingReceivableForm({
+      invoiceTotal: String(account.invoiceTotal),
+      payerType: account.payerType,
+      payerName: account.payerName,
+      holderName: account.holderName || "",
+      duplicateNumber: account.duplicateNumber,
+      dueDate: account.dueDate,
+      paidAmount: String(account.paidAmount),
+      paymentMethod: account.paymentMethod,
+    });
+    setIsEditingReceivable(true);
+  }
+
+  async function handleSaveEditReceivableAccount(event: React.FormEvent) {
+    event.preventDefault();
+    if (!editingReceivableId || isEditingReceivable === "loading") return;
+
+    const payload = {
+      invoiceTotal: Number(editingReceivableForm.invoiceTotal),
+      payerType: editingReceivableForm.payerType,
+      payerName: editingReceivableForm.payerName.trim(),
+      holderName: editingReceivableForm.payerType === "fiador" ? editingReceivableForm.holderName.trim() : "",
+      duplicateNumber: editingReceivableForm.duplicateNumber.trim(),
+      dueDate: editingReceivableForm.dueDate,
+      paidAmount: Number(editingReceivableForm.paidAmount),
+      remainingAmount: Math.max(0, Number(editingReceivableForm.invoiceTotal) - Number(editingReceivableForm.paidAmount)),
+      changeAmount: Math.max(0, Number(editingReceivableForm.paidAmount) - Number(editingReceivableForm.invoiceTotal)),
+      paymentMethod: editingReceivableForm.paymentMethod.trim(),
+      cashierId: "",
+      cashierName: "",
+    };
+
+    if (!payload.payerName || !payload.duplicateNumber || !payload.dueDate || !payload.paymentMethod || payload.invoiceTotal <= 0) {
+      setAdminNotice({ type: "error", text: "Preencha os campos obrigatorios da conta." });
+      return;
+    }
+
+    if (payload.payerType === "fiador" && !payload.holderName) {
+      setAdminNotice({ type: "error", text: "Informe o titular quando o pagamento for em fiador." });
+      return;
+    }
+
+    setIsEditingReceivable("loading");
+    try {
+      const currentAccount = receivableAccounts.find((a) => a.id === editingReceivableId);
+      if (!currentAccount) {
+        setAdminNotice({ type: "error", text: "Conta nao encontrada." });
+        return;
+      }
+
+      const result = await updateReceivableAccountRemote(editingReceivableId, {
+        ...payload,
+        cashierId: currentAccount.cashierId,
+        cashierName: currentAccount.cashierName,
+      });
+
+      if (!result.account) {
+        setAdminNotice({ type: "error", text: result.error || "Nao foi possivel atualizar a conta recebida." });
+        return;
+      }
+
+      setReceivableAccounts((current) =>
+        current.map((account) =>
+          account.id === editingReceivableId ? result.account as ReceivableAccount : account
+        )
+      );
+      setIsEditingReceivable(false);
+      setEditingReceivableId(null);
+      setAdminNotice({ type: "success", text: "Conta recebida atualizada com sucesso." });
+    } finally {
+      setIsEditingReceivable(false);
+    }
+  }
+
+  async function handleSaveCardFees() {
+    const debit = Math.max(0, Number(receivableDebitFeeDraft) || 0);
+    const credit = Math.max(0, Number(receivableCreditFeeDraft) || 0);
+    const nextSettings: AdminSettings = {
+      ...settings,
+      cardDebitFeePercent: debit,
+      cardCreditFeePercent: credit,
+    };
+
+    setSettings(nextSettings);
+    try {
+      const saved = await saveAdminSettingsRemote(nextSettings);
+      if (saved) setSettings(saved);
+      setReceivableFeePopupOpen(false);
+      setAdminNotice({ type: "success", text: "Taxas de cartao atualizadas." });
+    } catch {
+      setAdminNotice({ type: "error", text: "Nao foi possivel salvar as taxas de cartao." });
+    }
   }
 
   const commandButtons = (
@@ -1546,6 +2029,373 @@ export default function AdminClient() {
                 )}
               </section>
             )}
+
+            {activeTab === "receber_contas" && (
+              <section className="space-y-4 rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold">Receber Contas</h2>
+                    <p className="mt-1 text-xs text-zinc-400">Registre pagamentos e consulte historico por dia, mes e ano.</p>
+                  </div>
+                  <div className="inline-flex rounded-xl border border-[#1A1A1A] bg-black/50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setReceivablePanelTab("cadastro_caixa")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${receivablePanelTab === "cadastro_caixa" ? "bg-[#B2FF00] text-black" : "text-zinc-300"}`}
+                    >
+                      Receber Contas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReceivablePanelTab("controle_contas")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${receivablePanelTab === "controle_contas" ? "bg-[#00AAFF] text-black" : "text-zinc-300"}`}
+                    >
+                      Controle de Contas
+                    </button>
+                  </div>
+                </div>
+
+                {receivablePanelTab === "cadastro_caixa" ? (
+                  <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+                    <article className="rounded-2xl border border-[#1A1A1A] bg-black/35 p-4">
+                      <h3 className="text-sm font-bold">Receber Contas</h3>
+                      <p className="mt-1 text-xs text-zinc-500">Cadastre os operadores para vincular os recebimentos.</p>
+                      <form onSubmit={handleCreateCashier} className="mt-3 grid gap-2">
+                        <input
+                          value={newCashierName}
+                          onChange={(event) => setNewCashierName(event.target.value)}
+                          placeholder="Nome do caixa"
+                          className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isSavingCashier}
+                          className="rounded-xl bg-[#B2FF00] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isSavingCashier ? "Salvando..." : "Cadastrar caixa"}
+                        </button>
+                      </form>
+
+                      <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+                        {cashiers.length === 0 ? (
+                          <p className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-3 text-xs text-zinc-500">Nenhum caixa cadastrado.</p>
+                        ) : (
+                          cashiers.map((cashier) => (
+                            <div key={cashier.id} className="flex items-center justify-between gap-2 rounded-xl border border-[#1A1A1A] px-3 py-2 text-sm text-zinc-300">
+                              <div>
+                                <p className="font-semibold">{cashier.name}</p>
+                                <p className="text-[11px] text-zinc-500">Criado em {new Date(cashier.createdAt).toLocaleDateString("pt-BR")}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteCashier(cashier)}
+                                className="grid h-8 w-8 place-items-center rounded-lg border border-red-500/60 text-red-300"
+                                aria-label={`Excluir caixa ${cashier.name}`}
+                                title="Excluir caixa"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </article>
+
+                    <form onSubmit={handleSaveReceivableAccount} className="rounded-2xl border border-[#1A1A1A] bg-black/35 p-4">
+                      <h3 className="text-sm font-bold">Cadastro de conta recebida</h3>
+                      <p className="mt-1 text-xs text-zinc-500">Preencha os campos para registrar o pagamento do cliente.</p>
+
+                      <div className="mt-3">
+                        <label className="mx-auto block max-w-md text-center text-xs text-zinc-400">
+                          Valor total da nota
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={receivableForm.invoiceTotal}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, invoiceTotal: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-center text-base font-semibold"
+                          />
+                        </label>
+                        <p className="mt-2 text-center text-xs text-zinc-500">
+                          {receivableAppliedFeePercent > 0
+                            ? `Total atualizado com taxa (${receivableAppliedFeePercent}%): ${formatCurrency(receivableInvoiceTotal)}`
+                            : `Total sem taxa: ${formatCurrency(receivableInvoiceTotal)}`}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <label className="text-xs text-zinc-400">
+                          Tipo de pagador
+                          <select
+                            value={receivableForm.payerType}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, payerType: event.target.value as "titular" | "fiador" }))}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          >
+                            <option value="titular">Titular</option>
+                            <option value="fiador">Fiador</option>
+                          </select>
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          Nome de quem pagou
+                          <input
+                            value={receivableForm.payerName}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, payerName: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          Nome do titular
+                          <input
+                            value={receivableForm.holderName}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, holderName: event.target.value }))}
+                            disabled={receivableForm.payerType !== "fiador"}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          Numero da duplicata
+                          <input
+                            value={receivableForm.duplicateNumber}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, duplicateNumber: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          Data de vencimento
+                          <input
+                            type="date"
+                            value={receivableForm.dueDate}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, dueDate: event.target.value }))}
+                            onFocus={(event) => event.currentTarget.showPicker?.()}
+                            onClick={(event) => event.currentTarget.showPicker?.()}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          Valor pago
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={receivableForm.paidAmount}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, paidAmount: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-400">
+                          Forma de pagamento
+                          <div className="mt-1 mb-2 flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-zinc-500">Debito: +{receivableDebitFeePercent}% | Credito: +{receivableCreditFeePercent}%</span>
+                            <button
+                              type="button"
+                              onClick={() => setReceivableFeePopupOpen(true)}
+                              className="rounded-lg border border-[#1A1A1A] px-2 py-1 text-[11px] text-zinc-300"
+                            >
+                              Ajustar taxas
+                            </button>
+                          </div>
+                          <select
+                            value={receivableForm.paymentMethod}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, paymentMethod: event.target.value }))}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          >
+                            {receivablePaymentMethods.map((method) => (
+                              <option key={method.value || "none"} value={method.value}>
+                                {method.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                        <div className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-2 text-sm">
+                          <p className="text-[11px] uppercase text-zinc-500">Valor restante</p>
+                          <p className="font-semibold text-[#FFD98A]">{formatCurrency(receivableRemainingAmount)}</p>
+                        </div>
+                        <div className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-2 text-sm">
+                          <p className="text-[11px] uppercase text-zinc-500">Troco</p>
+                          <p className="font-semibold text-[#9BFFD1]">{formatCurrency(receivableChangeAmount)}</p>
+                        </div>
+                        <div className="rounded-xl border border-[#1A1A1A] bg-black/60 px-3 py-2 text-sm">
+                          <p className="text-[11px] uppercase text-zinc-500">Caixa selecionado</p>
+                          <select
+                            value={selectedCashierId}
+                            onChange={(event) => setSelectedCashierId(event.target.value)}
+                            className="mt-1 w-full rounded-lg border border-[#1A1A1A] bg-black px-2 py-1 text-sm"
+                            disabled={cashiers.length === 0}
+                          >
+                            {cashiers.length === 0 ? <option value="">Nenhum caixa cadastrado</option> : null}
+                            {cashiers.map((cashier) => (
+                              <option key={cashier.id} value={cashier.id}>{cashier.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={isSavingReceivable}
+                        className="mt-3 w-full rounded-xl bg-[#00AAFF] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isSavingReceivable ? "Salvando conta..." : "Salvar conta recebida"}
+                      </button>
+                    </form>
+                  </div>
+                ) : (
+                  <article className="rounded-2xl border border-[#1A1A1A] bg-black/35 p-4">
+                    <div className="grid gap-2 md:grid-cols-[150px_180px_160px_1fr] md:items-end">
+                      <label className="text-xs text-zinc-400">
+                        Periodo
+                        <select
+                          value={receivableFilterMode}
+                          onChange={(event) => setReceivableFilterMode(event.target.value as ReceivableFilterMode)}
+                          className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                        >
+                          <option value="diario">Diario</option>
+                          <option value="mensal">Mensal</option>
+                          <option value="anual">Anual</option>
+                        </select>
+                      </label>
+
+                      {receivableFilterMode === "diario" ? (
+                        <label className="text-xs text-zinc-400">
+                          Data do pagamento
+                          <input
+                            type="date"
+                            value={receivableFilterDate}
+                            onChange={(event) => setReceivableFilterDate(event.target.value)}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                      ) : null}
+
+                      {receivableFilterMode === "mensal" ? (
+                        <label className="text-xs text-zinc-400">
+                          Mes do pagamento
+                          <input
+                            type="month"
+                            value={receivableFilterMonth}
+                            onChange={(event) => setReceivableFilterMonth(event.target.value)}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                      ) : null}
+
+                      {receivableFilterMode === "anual" ? (
+                        <label className="text-xs text-zinc-400">
+                          Ano do pagamento
+                          <input
+                            type="number"
+                            min="2000"
+                            max="2100"
+                            value={receivableFilterYear}
+                            onChange={(event) => setReceivableFilterYear(event.target.value)}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                      ) : null}
+
+                      <div className="rounded-xl border border-[#1A1A1A] bg-black/50 px-3 py-2 text-xs text-zinc-300">
+                        {filteredReceivableAccounts.length} pagamento(s) encontrado(s)
+                      </div>
+                    </div>
+
+                    <div className="mt-2 grid gap-2 md:grid-cols-[1fr_auto_auto]">
+                      <input
+                        value={receivableSearch}
+                        onChange={(event) => setReceivableSearch(event.target.value)}
+                        placeholder="Buscar por nome, duplicata, pagamento ou caixa"
+                        className="rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={exportReceivablesToPDF}
+                        className="rounded-xl border border-[#1A1A1A] px-4 py-2 text-sm text-zinc-200"
+                      >
+                        Exportar PDF
+                      </button>
+                      <button
+                        type="button"
+                        onClick={exportReceivablesToCSV}
+                        className="rounded-xl bg-[#B2FF00] px-4 py-2 text-sm font-black text-black"
+                      >
+                        Exportar Excel
+                      </button>
+                    </div>
+
+                    <div className="mt-2 rounded-xl border border-[#1A1A1A] bg-black/40 px-3 py-2 text-xs text-zinc-300">
+                      Filtro ativo: {receivableFilterLabel} | Total pago no filtro: {formatCurrency(filteredReceivableTotal)}
+                    </div>
+
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="min-w-[1180px] table-fixed text-sm">
+                        <thead>
+                          <tr className="border-b border-[#1A1A1A] text-zinc-300">
+                            <th className="w-[115px] px-3 py-2 text-left font-semibold">Data pagamento</th>
+                            <th className="w-[120px] px-3 py-2 text-left font-semibold">Duplicata</th>
+                            <th className="w-[170px] px-3 py-2 text-left font-semibold">Pagador</th>
+                            <th className="w-[95px] px-3 py-2 text-left font-semibold">Tipo</th>
+                            <th className="w-[170px] px-3 py-2 text-left font-semibold">Titular</th>
+                            <th className="w-[110px] px-3 py-2 text-left font-semibold">Vencimento</th>
+                            <th className="w-[110px] px-3 py-2 text-right font-semibold">Nota</th>
+                            <th className="w-[110px] px-3 py-2 text-right font-semibold">Pago</th>
+                            <th className="w-[110px] px-3 py-2 text-right font-semibold">Restante</th>
+                            <th className="w-[100px] px-3 py-2 text-right font-semibold">Troco</th>
+                            <th className="w-[130px] px-3 py-2 text-left font-semibold">Pagamento</th>
+                            <th className="w-[130px] px-3 py-2 text-left font-semibold">Caixa</th>
+                            <th className="w-[50px] px-3 py-2 text-center font-semibold">Editar</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredReceivableAccounts.length === 0 ? (
+                            <tr>
+                              <td colSpan={12} className="px-3 py-4 text-center text-xs text-zinc-500">
+                                Nenhum pagamento encontrado para este filtro.
+                              </td>
+                            </tr>
+                          ) : (
+                            filteredReceivableAccounts.map((account) => (
+                              <tr key={account.id} className="border-b border-[#1A1A1A] align-top hover:bg-black/30">
+                                <td className="px-3 py-3 text-xs text-zinc-300">{new Date(account.createdAt).toLocaleDateString("pt-BR")}</td>
+                                <td className="px-3 py-3 text-xs text-zinc-300">{account.duplicateNumber}</td>
+                                <td
+                                  className="cursor-pointer px-3 py-3 text-xs text-white hover:text-[#B2FF00] md:cursor-default md:hover:text-white"
+                                  onClick={() => handleOpenEditReceivableAccount(account)}
+                                >
+                                  {account.payerName}
+                                </td>
+                                <td className="px-3 py-3 text-xs text-zinc-300">{account.payerType}</td>
+                                <td className="px-3 py-3 text-xs text-zinc-400">{account.holderName || "-"}</td>
+                                <td className="px-3 py-3 text-xs text-zinc-300">{new Date(`${account.dueDate}T00:00:00`).toLocaleDateString("pt-BR")}</td>
+                                <td className="px-3 py-3 text-right text-xs font-semibold text-zinc-200">{formatCurrency(account.invoiceTotal)}</td>
+                                <td className="px-3 py-3 text-right text-xs font-semibold text-[#9BFFD1]">{formatCurrency(account.paidAmount)}</td>
+                                <td className="px-3 py-3 text-right text-xs font-semibold text-[#FFD98A]">{formatCurrency(account.remainingAmount)}</td>
+                                <td className="px-3 py-3 text-right text-xs font-semibold text-[#9BFFD1]">{formatCurrency(account.changeAmount)}</td>
+                                <td className="px-3 py-3 text-xs text-zinc-300">{account.paymentMethod}</td>
+                                <td className="px-3 py-3 text-xs text-zinc-300">{account.cashierName}</td>
+                                <td className="px-3 py-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditReceivableAccount(account)}
+                                    className="rounded-lg border border-[#1A1A1A] p-1.5 text-zinc-300 hover:bg-[#B2FF00] hover:text-black md:grid md:h-8 md:w-8 md:place-items-center"
+                                    aria-label={`Editar conta ${account.payerName}`}
+                                    title="Editar conta"
+                                  >
+                                    <Edit size={16} />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </article>
+                )}
+              </section>
+            )}
           </main>
         </section>
       </div>
@@ -1576,6 +2426,166 @@ export default function AdminClient() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {receivableFeePopupOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setReceivableFeePopupOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-base font-bold">Taxa da maquininha</h3>
+              <button type="button" onClick={() => setReceivableFeePopupOpen(false)} className="rounded-full border border-[#1A1A1A] p-1.5"><X size={14} /></button>
+            </div>
+            <p className="mb-3 text-xs text-zinc-500">Atualize os percentuais quando a operadora alterar as taxas.</p>
+
+            <div className="grid gap-2">
+              <label className="text-xs text-zinc-400">
+                Cartao de debito (%)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={receivableDebitFeeDraft}
+                  onChange={(event) => setReceivableDebitFeeDraft(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                />
+              </label>
+              <label className="text-xs text-zinc-400">
+                Cartao de credito (%)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={receivableCreditFeeDraft}
+                  onChange={(event) => setReceivableCreditFeeDraft(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                />
+              </label>
+            </div>
+
+            <button type="button" onClick={() => void handleSaveCardFees()} className="mt-4 w-full rounded-xl bg-[#00AAFF] py-2 text-sm font-black text-black">
+              Salvar taxas
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {isEditingReceivable ? (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-4" onClick={() => setIsEditingReceivable(false)}>
+          <div className="mx-auto mt-8 max-h-[calc(100vh-4rem)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[#1A1A1A] bg-[#080808] p-4" onClick={(event) => event.stopPropagation()}>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold">Editar Conta Recebida</h3>
+              <button type="button" onClick={() => setIsEditingReceivable(false)} className="rounded-full border border-[#1A1A1A] p-1.5">
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditReceivableAccount} className="grid gap-3">
+              <div>
+                <label className="mx-auto block max-w-md text-center text-xs text-zinc-400">
+                  Valor total da nota
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editingReceivableForm.invoiceTotal}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, invoiceTotal: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-center text-base font-semibold"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-zinc-400">
+                  Tipo de pagador
+                  <select
+                    value={editingReceivableForm.payerType}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, payerType: event.target.value as "titular" | "fiador" }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  >
+                    <option value="titular">Titular</option>
+                    <option value="fiador">Fiador</option>
+                  </select>
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Nome de quem pagou
+                  <input
+                    value={editingReceivableForm.payerName}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, payerName: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Nome do titular
+                  <input
+                    value={editingReceivableForm.holderName}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, holderName: event.target.value }))}
+                    disabled={editingReceivableForm.payerType !== "fiador"}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Numero da duplicata
+                  <input
+                    value={editingReceivableForm.duplicateNumber}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, duplicateNumber: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Data de vencimento
+                  <input
+                    type="date"
+                    value={editingReceivableForm.dueDate}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, dueDate: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Valor pago
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={editingReceivableForm.paidAmount}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, paidAmount: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Forma de pagamento
+                  <select
+                    value={editingReceivableForm.paymentMethod}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, paymentMethod: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  >
+                    {receivablePaymentMethods.map((method) => (
+                      <option key={method.value || "none"} value={method.value}>
+                        {method.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingReceivable(false)}
+                  className="flex-1 rounded-xl border border-[#1A1A1A] py-2 text-sm font-semibold text-zinc-300"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isEditingReceivable === "loading"}
+                  className="flex-1 rounded-xl bg-[#00AAFF] py-2 text-sm font-black text-black disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isEditingReceivable === "loading" ? "Salvando..." : "Salvar alteracoes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
 
       {profileOpen ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 p-4" onClick={() => setProfileOpen(false)}>

@@ -1,5 +1,5 @@
 import { sql } from "@vercel/postgres";
-import { AdminSettings, AdminUser, CustomerAccount, CustomerAlert, Order, Product } from "@/types/domain";
+import { AdminSettings, AdminUser, Cashier, CustomerAccount, CustomerAlert, Order, Product, ReceivableAccount } from "@/types/domain";
 
 const defaultSettings: AdminSettings = {
   pixKey: "",
@@ -13,6 +13,8 @@ const defaultSettings: AdminSettings = {
   pickupMinimum: 100,
   cashbackSpendThreshold: 0,
   cashbackRewardValue: 0,
+  cardDebitFeePercent: 3,
+  cardCreditFeePercent: 5,
 };
 
 const defaultAdmins: Array<{ id: number; user: AdminUser }> = [
@@ -114,7 +116,9 @@ async function ensureSchema() {
           delivery_minimum NUMERIC NOT NULL DEFAULT 150,
           pickup_minimum NUMERIC NOT NULL DEFAULT 100,
           cashback_spend_threshold NUMERIC NOT NULL DEFAULT 0,
-          cashback_reward_value NUMERIC NOT NULL DEFAULT 0
+          cashback_reward_value NUMERIC NOT NULL DEFAULT 0,
+          card_debit_fee_percent NUMERIC NOT NULL DEFAULT 3,
+          card_credit_fee_percent NUMERIC NOT NULL DEFAULT 5
         );
       `;
 
@@ -146,6 +150,16 @@ async function ensureSchema() {
       await sql`
         ALTER TABLE admin_settings
         ADD COLUMN IF NOT EXISTS cashback_reward_value NUMERIC NOT NULL DEFAULT 0;
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS card_debit_fee_percent NUMERIC NOT NULL DEFAULT 3;
+      `;
+
+      await sql`
+        ALTER TABLE admin_settings
+        ADD COLUMN IF NOT EXISTS card_credit_fee_percent NUMERIC NOT NULL DEFAULT 5;
       `;
 
       await sql`
@@ -245,6 +259,33 @@ async function ensureSchema() {
       `;
 
       await sql`
+        CREATE TABLE IF NOT EXISTS cashiers (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `;
+
+      await sql`
+        CREATE TABLE IF NOT EXISTS receivable_accounts (
+          id TEXT PRIMARY KEY,
+          invoice_total NUMERIC NOT NULL,
+          payer_type TEXT NOT NULL,
+          payer_name TEXT NOT NULL,
+          holder_name TEXT,
+          duplicate_number TEXT NOT NULL,
+          due_date TEXT NOT NULL,
+          paid_amount NUMERIC NOT NULL,
+          remaining_amount NUMERIC NOT NULL,
+          change_amount NUMERIC NOT NULL,
+          payment_method TEXT NOT NULL,
+          cashier_id TEXT NOT NULL,
+          cashier_name TEXT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+      `;
+
+      await sql`
         UPDATE orders AS o
         SET customer_id = c.id
         FROM customers AS c
@@ -265,7 +306,9 @@ async function ensureSchema() {
           delivery_minimum,
           pickup_minimum,
           cashback_spend_threshold,
-          cashback_reward_value
+          cashback_reward_value,
+          card_debit_fee_percent,
+          card_credit_fee_percent
         )
         VALUES (
           1,
@@ -279,7 +322,9 @@ async function ensureSchema() {
           ${defaultSettings.deliveryMinimum},
           ${defaultSettings.pickupMinimum},
           ${defaultSettings.cashbackSpendThreshold},
-          ${defaultSettings.cashbackRewardValue}
+          ${defaultSettings.cashbackRewardValue},
+          ${defaultSettings.cardDebitFeePercent},
+          ${defaultSettings.cardCreditFeePercent}
         )
         ON CONFLICT (id) DO NOTHING;
       `;
@@ -323,6 +368,8 @@ export async function getSettings(): Promise<AdminSettings> {
     pickupMinimum: Number(data.pickup_minimum || defaultSettings.pickupMinimum),
     cashbackSpendThreshold: Number(data.cashback_spend_threshold || defaultSettings.cashbackSpendThreshold),
     cashbackRewardValue: Number(data.cashback_reward_value || defaultSettings.cashbackRewardValue),
+    cardDebitFeePercent: Number(data.card_debit_fee_percent ?? defaultSettings.cardDebitFeePercent),
+    cardCreditFeePercent: Number(data.card_credit_fee_percent ?? defaultSettings.cardCreditFeePercent),
   };
 }
 
@@ -340,6 +387,8 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
     pickupMinimum: Number.isFinite(settings.pickupMinimum) ? Number(settings.pickupMinimum) : defaultSettings.pickupMinimum,
     cashbackSpendThreshold: Number.isFinite(settings.cashbackSpendThreshold) ? Number(settings.cashbackSpendThreshold) : defaultSettings.cashbackSpendThreshold,
     cashbackRewardValue: Number.isFinite(settings.cashbackRewardValue) ? Number(settings.cashbackRewardValue) : defaultSettings.cashbackRewardValue,
+    cardDebitFeePercent: Number.isFinite(settings.cardDebitFeePercent) ? Number(settings.cardDebitFeePercent) : defaultSettings.cardDebitFeePercent,
+    cardCreditFeePercent: Number.isFinite(settings.cardCreditFeePercent) ? Number(settings.cardCreditFeePercent) : defaultSettings.cardCreditFeePercent,
   };
   await sql`
     UPDATE admin_settings
@@ -353,7 +402,9 @@ export async function saveSettings(settings: AdminSettings): Promise<AdminSettin
         delivery_minimum = ${next.deliveryMinimum},
         pickup_minimum = ${next.pickupMinimum},
         cashback_spend_threshold = ${next.cashbackSpendThreshold},
-        cashback_reward_value = ${next.cashbackRewardValue}
+        cashback_reward_value = ${next.cashbackRewardValue},
+        card_debit_fee_percent = ${next.cardDebitFeePercent},
+        card_credit_fee_percent = ${next.cardCreditFeePercent}
     WHERE id = 1;
   `;
   return next;
@@ -680,4 +731,225 @@ export async function markCustomerAlertAsRead(customerId: string, alertId: strin
     SET read_at = NOW()
     WHERE id = ${alertId} AND customer_id = ${customerId};
   `;
+}
+
+export async function listCashiers(): Promise<Cashier[]> {
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM cashiers ORDER BY created_at ASC;`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    createdAt: new Date(row.created_at).toISOString(),
+  }));
+}
+
+export async function createCashier(name: string): Promise<Cashier> {
+  await ensureSchema();
+  const trimmed = name.trim();
+  if (!trimmed) {
+    throw new Error("Informe o nome do caixa.");
+  }
+
+  const { rows: duplicateRows } = await sql`
+    SELECT id
+    FROM cashiers
+    WHERE lower(name) = lower(${trimmed})
+    LIMIT 1;
+  `;
+
+  if (duplicateRows.length > 0) {
+    throw new Error("Ja existe um caixa com esse nome.");
+  }
+
+  const next: Cashier = {
+    id: crypto.randomUUID(),
+    name: trimmed,
+    createdAt: new Date().toISOString(),
+  };
+
+  await sql`
+    INSERT INTO cashiers (id, name, created_at)
+    VALUES (${next.id}, ${next.name}, ${next.createdAt});
+  `;
+
+  return next;
+}
+
+export async function deleteCashier(cashierId: string): Promise<void> {
+  await ensureSchema();
+  const id = cashierId.trim();
+  if (!id) {
+    throw new Error("Caixa invalido.");
+  }
+
+  await sql`
+    DELETE FROM cashiers
+    WHERE id = ${id};
+  `;
+}
+
+export async function listReceivableAccounts(): Promise<ReceivableAccount[]> {
+  await ensureSchema();
+  const { rows } = await sql`SELECT * FROM receivable_accounts ORDER BY created_at DESC;`;
+  return rows.map((row) => ({
+    id: String(row.id),
+    invoiceTotal: Number(row.invoice_total),
+    payerType: row.payer_type === "fiador" ? "fiador" : "titular",
+    payerName: String(row.payer_name),
+    holderName: row.holder_name ? String(row.holder_name) : undefined,
+    duplicateNumber: String(row.duplicate_number),
+    dueDate: String(row.due_date),
+    paidAmount: Number(row.paid_amount),
+    remainingAmount: Number(row.remaining_amount),
+    changeAmount: Number(row.change_amount),
+    paymentMethod: String(row.payment_method),
+    cashierId: String(row.cashier_id),
+    cashierName: String(row.cashier_name),
+    createdAt: new Date(row.created_at).toISOString(),
+  }));
+}
+
+export async function createReceivableAccount(account: Omit<ReceivableAccount, "id" | "createdAt">): Promise<ReceivableAccount> {
+  await ensureSchema();
+
+  const invoiceTotal = Number(account.invoiceTotal || 0);
+  const paidAmount = Number(account.paidAmount || 0);
+  const remainingAmount = Number(account.remainingAmount || 0);
+  const changeAmount = Number(account.changeAmount || 0);
+  const duplicateNumber = (account.duplicateNumber || "").trim();
+  const payerName = (account.payerName || "").trim();
+  const holderName = (account.holderName || "").trim();
+  const paymentMethod = (account.paymentMethod || "").trim();
+  const dueDate = (account.dueDate || "").trim();
+  const cashierId = (account.cashierId || "").trim();
+  const cashierName = (account.cashierName || "").trim();
+
+  if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0) throw new Error("Valor total da nota invalido.");
+  if (!payerName) throw new Error("Informe o nome da pessoa.");
+  if (!duplicateNumber) throw new Error("Informe o numero da duplicata.");
+  if (!dueDate) throw new Error("Informe a data de vencimento.");
+  if (!Number.isFinite(paidAmount) || paidAmount < 0) throw new Error("Valor pago invalido.");
+  if (!Number.isFinite(remainingAmount) || remainingAmount < 0) throw new Error("Valor restante invalido.");
+  if (!Number.isFinite(changeAmount) || changeAmount < 0) throw new Error("Troco invalido.");
+  if (!paymentMethod) throw new Error("Informe a forma de pagamento.");
+  if (!cashierId || !cashierName) throw new Error("Selecione um caixa.");
+
+  const next: ReceivableAccount = {
+    id: crypto.randomUUID(),
+    invoiceTotal,
+    payerType: account.payerType === "fiador" ? "fiador" : "titular",
+    payerName,
+    holderName: holderName || undefined,
+    duplicateNumber,
+    dueDate,
+    paidAmount,
+    remainingAmount,
+    changeAmount,
+    paymentMethod,
+    cashierId,
+    cashierName,
+    createdAt: new Date().toISOString(),
+  };
+
+  await sql`
+    INSERT INTO receivable_accounts (
+      id,
+      invoice_total,
+      payer_type,
+      payer_name,
+      holder_name,
+      duplicate_number,
+      due_date,
+      paid_amount,
+      remaining_amount,
+      change_amount,
+      payment_method,
+      cashier_id,
+      cashier_name,
+      created_at
+    )
+    VALUES (
+      ${next.id},
+      ${next.invoiceTotal},
+      ${next.payerType},
+      ${next.payerName},
+      ${next.holderName || null},
+      ${next.duplicateNumber},
+      ${next.dueDate},
+      ${next.paidAmount},
+      ${next.remainingAmount},
+      ${next.changeAmount},
+      ${next.paymentMethod},
+      ${next.cashierId},
+      ${next.cashierName},
+      ${next.createdAt}
+    );
+  `;
+
+  return next;
+}
+
+export async function updateReceivableAccount(id: string, account: Omit<ReceivableAccount, "id" | "createdAt">): Promise<ReceivableAccount> {
+  await ensureSchema();
+
+  const invoiceTotal = Number(account.invoiceTotal || 0);
+  const paidAmount = Number(account.paidAmount || 0);
+  const remainingAmount = Number(account.remainingAmount || 0);
+  const changeAmount = Number(account.changeAmount || 0);
+  const duplicateNumber = (account.duplicateNumber || "").trim();
+  const payerName = (account.payerName || "").trim();
+  const holderName = (account.holderName || "").trim();
+  const paymentMethod = (account.paymentMethod || "").trim();
+  const dueDate = (account.dueDate || "").trim();
+  const cashierId = (account.cashierId || "").trim();
+  const cashierName = (account.cashierName || "").trim();
+
+  if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0) throw new Error("Valor total da nota invalido.");
+  if (!payerName) throw new Error("Informe o nome da pessoa.");
+  if (!duplicateNumber) throw new Error("Informe o numero da duplicata.");
+  if (!dueDate) throw new Error("Informe a data de vencimento.");
+  if (!Number.isFinite(paidAmount) || paidAmount < 0) throw new Error("Valor pago invalido.");
+  if (!Number.isFinite(remainingAmount) || remainingAmount < 0) throw new Error("Valor restante invalido.");
+  if (!Number.isFinite(changeAmount) || changeAmount < 0) throw new Error("Troco invalido.");
+  if (!paymentMethod) throw new Error("Informe a forma de pagamento.");
+  if (!cashierId || !cashierName) throw new Error("Selecione um caixa.");
+
+  await sql`
+    UPDATE receivable_accounts
+    SET
+      invoice_total = ${invoiceTotal},
+      payer_type = ${account.payerType === "fiador" ? "fiador" : "titular"},
+      payer_name = ${payerName},
+      holder_name = ${holderName || null},
+      duplicate_number = ${duplicateNumber},
+      due_date = ${dueDate},
+      paid_amount = ${paidAmount},
+      remaining_amount = ${remainingAmount},
+      change_amount = ${changeAmount},
+      payment_method = ${paymentMethod},
+      cashier_id = ${cashierId},
+      cashier_name = ${cashierName}
+    WHERE id = ${id};
+  `;
+
+  const { rows } = await sql`SELECT * FROM receivable_accounts WHERE id = ${id};`;
+  if (rows.length === 0) throw new Error("Conta recebida nao encontrada.");
+
+  const row = rows[0]!;
+  return {
+    id: String(row.id),
+    invoiceTotal: Number(row.invoice_total),
+    payerType: row.payer_type === "fiador" ? "fiador" : "titular",
+    payerName: String(row.payer_name),
+    holderName: row.holder_name ? String(row.holder_name) : undefined,
+    duplicateNumber: String(row.duplicate_number),
+    dueDate: String(row.due_date),
+    paidAmount: Number(row.paid_amount),
+    remainingAmount: Number(row.remaining_amount),
+    changeAmount: Number(row.change_amount),
+    paymentMethod: String(row.payment_method),
+    cashierId: String(row.cashier_id),
+    cashierName: String(row.cashier_name),
+    createdAt: new Date(row.created_at).toISOString(),
+  };
 }

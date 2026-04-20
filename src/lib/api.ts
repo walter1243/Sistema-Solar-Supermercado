@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminSettings, AdminUser, CustomerAccount, CustomerAlert, DashboardSummary, Order, Product } from "@/types/domain";
+import { AdminSettings, AdminUser, Cashier, CustomerAccount, CustomerAlert, DashboardSummary, Order, Product, ReceivableAccount } from "@/types/domain";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -79,6 +79,8 @@ export async function getAdminSettingsRemote(): Promise<AdminSettings> {
     pickupMinimum: 100,
     cashbackSpendThreshold: 0,
     cashbackRewardValue: 0,
+    cardDebitFeePercent: 3,
+    cardCreditFeePercent: 5,
   };
 }
 
@@ -288,5 +290,83 @@ export async function deleteAdminUserRemote(username: string): Promise<{ success
     return { success: Boolean(payload.success) };
   } catch {
     return { success: false, error: "Falha ao remover administrador." };
+  }
+}
+
+export async function listCashiersRemote(): Promise<Cashier[]> {
+  const remote = unwrapData<Cashier[]>(await apiFetch<unknown>("/api/cashiers", { method: "GET" }));
+  return remote || [];
+}
+
+export async function createCashierRemote(name: string): Promise<{ cashier: Cashier | null; error?: string }> {
+  try {
+    const res = await fetch("/api/cashiers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    const payload = (await res.json()) as { data?: Cashier; error?: string };
+    if (!res.ok) {
+      return { cashier: null, error: payload.error || "Falha ao cadastrar caixa." };
+    }
+    return { cashier: payload.data || null };
+  } catch {
+    return { cashier: null, error: "Falha ao cadastrar caixa." };
+  }
+}
+
+export async function deleteCashierRemote(cashierId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const res = await fetch("/api/cashiers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: cashierId }),
+    });
+    const payload = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok) {
+      return { success: false, error: payload.error || "Falha ao excluir caixa." };
+    }
+    return { success: Boolean(payload.success) };
+  } catch {
+    return { success: false, error: "Falha ao excluir caixa." };
+  }
+}
+
+export async function listReceivableAccountsRemote(): Promise<ReceivableAccount[]> {
+  const remote = unwrapData<ReceivableAccount[]>(await apiFetch<unknown>("/api/receivables", { method: "GET" }));
+  return remote || [];
+}
+
+export async function createReceivableAccountRemote(account: Omit<ReceivableAccount, "id" | "createdAt">): Promise<{ account: ReceivableAccount | null; error?: string }> {
+  try {
+    const res = await fetch("/api/receivables", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(account),
+    });
+    const payload = (await res.json()) as { data?: ReceivableAccount; error?: string };
+    if (!res.ok) {
+      return { account: null, error: payload.error || "Falha ao salvar conta recebida." };
+    }
+    return { account: payload.data || null };
+  } catch {
+    return { account: null, error: "Falha ao salvar conta recebida." };
+  }
+}
+
+export async function updateReceivableAccountRemote(id: string, account: Omit<ReceivableAccount, "id" | "createdAt">): Promise<{ account: ReceivableAccount | null; error?: string }> {
+  try {
+    const res = await fetch(`/api/receivables/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(account),
+    });
+    const payload = (await res.json()) as { data?: ReceivableAccount; error?: string };
+    if (!res.ok) {
+      return { account: null, error: payload.error || "Falha ao atualizar conta recebida." };
+    }
+    return { account: payload.data || null };
+  } catch {
+    return { account: null, error: "Falha ao atualizar conta recebida." };
   }
 }
