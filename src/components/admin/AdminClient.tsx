@@ -214,6 +214,7 @@ export default function AdminClient() {
     payerName: "",
     holderName: "",
     duplicateNumber: "",
+    paymentDate: new Date().toISOString().slice(0, 10),
     dueDate: new Date().toISOString().slice(0, 10),
     paidAmount: "",
     paymentMethod: "pix",
@@ -225,6 +226,7 @@ export default function AdminClient() {
     payerName: "",
     holderName: "",
     duplicateNumber: "",
+    paymentDate: "",
     dueDate: "",
     paidAmount: "",
     paymentMethod: "",
@@ -389,7 +391,7 @@ export default function AdminClient() {
     const query = receivableSearch.trim().toLowerCase();
 
     return receivableAccounts.filter((account) => {
-      const paymentDate = normalizeDate(account.createdAt);
+      const paymentDate = normalizeDate(account.paymentDate || account.createdAt);
       if (!paymentDate) return false;
       const periodMatch = receivableFilterMode === "diario"
         ? paymentDate === receivableFilterDate
@@ -417,7 +419,7 @@ export default function AdminClient() {
 
   const receivableExportRows = useMemo(() => {
     return filteredReceivableAccounts.map((account) => ({
-      dataPagamento: new Date(account.createdAt).toLocaleDateString("pt-BR"),
+      dataPagamento: new Date(`${account.paymentDate}T00:00:00`).toLocaleDateString("pt-BR"),
       duplicata: account.duplicateNumber,
       pagador: account.payerName,
       tipo: account.payerType,
@@ -1253,6 +1255,7 @@ export default function AdminClient() {
       payerName: receivableForm.payerName.trim(),
       holderName: receivableForm.payerType === "fiador" ? receivableForm.holderName.trim() : "",
       duplicateNumber: receivableForm.duplicateNumber.trim(),
+      paymentDate: receivableForm.paymentDate,
       dueDate: receivableForm.dueDate,
       paidAmount: receivablePaidAmount,
       remainingAmount: receivableRemainingAmount,
@@ -1262,7 +1265,7 @@ export default function AdminClient() {
       cashierName: selectedCashier.name,
     };
 
-    if (!payload.payerName || !payload.duplicateNumber || !payload.dueDate || !payload.paymentMethod || payload.invoiceTotal <= 0) {
+    if (!payload.payerName || !payload.duplicateNumber || !payload.paymentDate || !payload.dueDate || !payload.paymentMethod || payload.invoiceTotal <= 0) {
       setAdminNotice({ type: "error", text: "Preencha os campos obrigatorios da conta." });
       return;
     }
@@ -1287,6 +1290,7 @@ export default function AdminClient() {
         payerName: "",
         holderName: "",
         duplicateNumber: "",
+        paymentDate: new Date().toISOString().slice(0, 10),
         dueDate: new Date().toISOString().slice(0, 10),
         paidAmount: "",
         paymentMethod: "pix",
@@ -1306,6 +1310,7 @@ export default function AdminClient() {
       payerName: account.payerName,
       holderName: account.holderName || "",
       duplicateNumber: account.duplicateNumber,
+      paymentDate: account.paymentDate,
       dueDate: account.dueDate,
       paidAmount: String(account.paidAmount),
       paymentMethod: account.paymentMethod,
@@ -1323,6 +1328,7 @@ export default function AdminClient() {
       payerName: editingReceivableForm.payerName.trim(),
       holderName: editingReceivableForm.payerType === "fiador" ? editingReceivableForm.holderName.trim() : "",
       duplicateNumber: editingReceivableForm.duplicateNumber.trim(),
+      paymentDate: editingReceivableForm.paymentDate,
       dueDate: editingReceivableForm.dueDate,
       paidAmount: Number(editingReceivableForm.paidAmount),
       remainingAmount: Math.max(0, Number(editingReceivableForm.invoiceTotal) - Number(editingReceivableForm.paidAmount)),
@@ -1332,7 +1338,7 @@ export default function AdminClient() {
       cashierName: "",
     };
 
-    if (!payload.payerName || !payload.duplicateNumber || !payload.dueDate || !payload.paymentMethod || payload.invoiceTotal <= 0) {
+    if (!payload.payerName || !payload.duplicateNumber || !payload.paymentDate || !payload.dueDate || !payload.paymentMethod || payload.invoiceTotal <= 0) {
       setAdminNotice({ type: "error", text: "Preencha os campos obrigatorios da conta." });
       return;
     }
@@ -2162,6 +2168,17 @@ export default function AdminClient() {
                           />
                         </label>
                         <label className="text-xs text-zinc-400">
+                          Data de recebimento
+                          <input
+                            type="date"
+                            value={receivableForm.paymentDate}
+                            onChange={(event) => setReceivableForm((current) => ({ ...current, paymentDate: event.target.value }))}
+                            onFocus={(event) => event.currentTarget.showPicker?.()}
+                            onClick={(event) => event.currentTarget.showPicker?.()}
+                            className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <label className="text-xs text-zinc-400">
                           Data de vencimento
                           <input
                             type="date"
@@ -2351,14 +2368,14 @@ export default function AdminClient() {
                         <tbody>
                           {filteredReceivableAccounts.length === 0 ? (
                             <tr>
-                              <td colSpan={12} className="px-3 py-4 text-center text-xs text-zinc-500">
+                              <td colSpan={13} className="px-3 py-4 text-center text-xs text-zinc-500">
                                 Nenhum pagamento encontrado para este filtro.
                               </td>
                             </tr>
                           ) : (
                             filteredReceivableAccounts.map((account) => (
                               <tr key={account.id} className="border-b border-[#1A1A1A] align-top hover:bg-black/30">
-                                <td className="px-3 py-3 text-xs text-zinc-300">{new Date(account.createdAt).toLocaleDateString("pt-BR")}</td>
+                                <td className="px-3 py-3 text-xs text-zinc-300">{new Date(`${account.paymentDate}T00:00:00`).toLocaleDateString("pt-BR")}</td>
                                 <td className="px-3 py-3 text-xs text-zinc-300">{account.duplicateNumber}</td>
                                 <td
                                   className="cursor-pointer px-3 py-3 text-xs text-white hover:text-[#B2FF00] md:cursor-default md:hover:text-white"
@@ -2527,6 +2544,15 @@ export default function AdminClient() {
                   <input
                     value={editingReceivableForm.duplicateNumber}
                     onChange={(event) => setEditingReceivableForm((current) => ({ ...current, duplicateNumber: event.target.value }))}
+                    className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
+                  />
+                </label>
+                <label className="text-xs text-zinc-400">
+                  Data de recebimento
+                  <input
+                    type="date"
+                    value={editingReceivableForm.paymentDate}
+                    onChange={(event) => setEditingReceivableForm((current) => ({ ...current, paymentDate: event.target.value }))}
                     className="mt-1 w-full rounded-xl border border-[#1A1A1A] bg-black px-3 py-2 text-sm"
                   />
                 </label>

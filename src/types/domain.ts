@@ -60,6 +60,8 @@ export type AdminSettings = {
   pickupMinimum: number;
   cashbackSpendThreshold: number;
   cashbackRewardValue: number;
+  cardDebitFeePercent: number;
+  cardCreditFeePercent: number;
 };
 
 export type AdminUser = {
@@ -96,4 +98,28 @@ export type DashboardSummary = {
   ordersToday: number;
   productsToday: number;
   totalProducts: number;
+};
+
+export type Cashier = {
+  id: string;
+  name: string;
+  createdAt: string;
+};
+
+export type ReceivableAccount = {
+  id: string;
+  invoiceTotal: number;
+  payerType: "titular" | "fiador";
+  payerName: string;
+  holderName?: string;
+  duplicateNumber: string;
+  paymentDate: string;
+  dueDate: string;
+  paidAmount: number;
+  remainingAmount: number;
+  changeAmount: number;
+  paymentMethod: string;
+  cashierId: string;
+  cashierName: string;
+  createdAt: string;
 };

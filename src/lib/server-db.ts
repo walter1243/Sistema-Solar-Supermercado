@@ -274,6 +274,7 @@ async function ensureSchema() {
           payer_name TEXT NOT NULL,
           holder_name TEXT,
           duplicate_number TEXT NOT NULL,
+          payment_date TEXT NOT NULL,
           due_date TEXT NOT NULL,
           paid_amount NUMERIC NOT NULL,
           remaining_amount NUMERIC NOT NULL,
@@ -283,6 +284,17 @@ async function ensureSchema() {
           cashier_name TEXT NOT NULL,
           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+      `;
+
+      await sql`
+        ALTER TABLE receivable_accounts
+        ADD COLUMN IF NOT EXISTS payment_date TEXT;
+      `;
+
+      await sql`
+        UPDATE receivable_accounts
+        SET payment_date = TO_CHAR(created_at::date, 'YYYY-MM-DD')
+        WHERE payment_date IS NULL OR TRIM(payment_date) = '';
       `;
 
       await sql`
@@ -790,7 +802,11 @@ export async function deleteCashier(cashierId: string): Promise<void> {
 
 export async function listReceivableAccounts(): Promise<ReceivableAccount[]> {
   await ensureSchema();
-  const { rows } = await sql`SELECT * FROM receivable_accounts ORDER BY created_at DESC;`;
+  const { rows } = await sql`
+    SELECT *
+    FROM receivable_accounts
+    ORDER BY COALESCE(NULLIF(payment_date, ''), TO_CHAR(created_at::date, 'YYYY-MM-DD')) DESC, created_at DESC;
+  `;
   return rows.map((row) => ({
     id: String(row.id),
     invoiceTotal: Number(row.invoice_total),
@@ -798,6 +814,7 @@ export async function listReceivableAccounts(): Promise<ReceivableAccount[]> {
     payerName: String(row.payer_name),
     holderName: row.holder_name ? String(row.holder_name) : undefined,
     duplicateNumber: String(row.duplicate_number),
+    paymentDate: String(row.payment_date || new Date(row.created_at).toISOString().slice(0, 10)),
     dueDate: String(row.due_date),
     paidAmount: Number(row.paid_amount),
     remainingAmount: Number(row.remaining_amount),
@@ -817,6 +834,7 @@ export async function createReceivableAccount(account: Omit<ReceivableAccount, "
   const remainingAmount = Number(account.remainingAmount || 0);
   const changeAmount = Number(account.changeAmount || 0);
   const duplicateNumber = (account.duplicateNumber || "").trim();
+  const paymentDate = (account.paymentDate || "").trim();
   const payerName = (account.payerName || "").trim();
   const holderName = (account.holderName || "").trim();
   const paymentMethod = (account.paymentMethod || "").trim();
@@ -827,6 +845,7 @@ export async function createReceivableAccount(account: Omit<ReceivableAccount, "
   if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0) throw new Error("Valor total da nota invalido.");
   if (!payerName) throw new Error("Informe o nome da pessoa.");
   if (!duplicateNumber) throw new Error("Informe o numero da duplicata.");
+  if (!paymentDate) throw new Error("Informe a data de recebimento.");
   if (!dueDate) throw new Error("Informe a data de vencimento.");
   if (!Number.isFinite(paidAmount) || paidAmount < 0) throw new Error("Valor pago invalido.");
   if (!Number.isFinite(remainingAmount) || remainingAmount < 0) throw new Error("Valor restante invalido.");
@@ -841,6 +860,7 @@ export async function createReceivableAccount(account: Omit<ReceivableAccount, "
     payerName,
     holderName: holderName || undefined,
     duplicateNumber,
+    paymentDate,
     dueDate,
     paidAmount,
     remainingAmount,
@@ -859,6 +879,7 @@ export async function createReceivableAccount(account: Omit<ReceivableAccount, "
       payer_name,
       holder_name,
       duplicate_number,
+      payment_date,
       due_date,
       paid_amount,
       remaining_amount,
@@ -875,6 +896,7 @@ export async function createReceivableAccount(account: Omit<ReceivableAccount, "
       ${next.payerName},
       ${next.holderName || null},
       ${next.duplicateNumber},
+      ${next.paymentDate},
       ${next.dueDate},
       ${next.paidAmount},
       ${next.remainingAmount},
@@ -897,6 +919,7 @@ export async function updateReceivableAccount(id: string, account: Omit<Receivab
   const remainingAmount = Number(account.remainingAmount || 0);
   const changeAmount = Number(account.changeAmount || 0);
   const duplicateNumber = (account.duplicateNumber || "").trim();
+  const paymentDate = (account.paymentDate || "").trim();
   const payerName = (account.payerName || "").trim();
   const holderName = (account.holderName || "").trim();
   const paymentMethod = (account.paymentMethod || "").trim();
@@ -907,6 +930,7 @@ export async function updateReceivableAccount(id: string, account: Omit<Receivab
   if (!Number.isFinite(invoiceTotal) || invoiceTotal <= 0) throw new Error("Valor total da nota invalido.");
   if (!payerName) throw new Error("Informe o nome da pessoa.");
   if (!duplicateNumber) throw new Error("Informe o numero da duplicata.");
+  if (!paymentDate) throw new Error("Informe a data de recebimento.");
   if (!dueDate) throw new Error("Informe a data de vencimento.");
   if (!Number.isFinite(paidAmount) || paidAmount < 0) throw new Error("Valor pago invalido.");
   if (!Number.isFinite(remainingAmount) || remainingAmount < 0) throw new Error("Valor restante invalido.");
@@ -922,6 +946,7 @@ export async function updateReceivableAccount(id: string, account: Omit<Receivab
       payer_name = ${payerName},
       holder_name = ${holderName || null},
       duplicate_number = ${duplicateNumber},
+      payment_date = ${paymentDate},
       due_date = ${dueDate},
       paid_amount = ${paidAmount},
       remaining_amount = ${remainingAmount},
@@ -943,6 +968,7 @@ export async function updateReceivableAccount(id: string, account: Omit<Receivab
     payerName: String(row.payer_name),
     holderName: row.holder_name ? String(row.holder_name) : undefined,
     duplicateNumber: String(row.duplicate_number),
+    paymentDate: String(row.payment_date || new Date(row.created_at).toISOString().slice(0, 10)),
     dueDate: String(row.due_date),
     paidAmount: Number(row.paid_amount),
     remainingAmount: Number(row.remaining_amount),
